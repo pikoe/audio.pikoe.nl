@@ -210,6 +210,10 @@ a {
 	font-size: 1.3rem;
 }
 
+.upload-panel[hidden] {
+	display: none;
+}
+
 .dropzone {
 	display: flex;
 	min-height: 245px;
@@ -274,6 +278,136 @@ a {
 	overflow-wrap: anywhere;
 }
 
+.metadata-panel {
+	width: min(100%, 900px);
+}
+
+.selected-audio {
+	margin: -0.65rem 0 1.25rem;
+	color: #574d5e;
+	overflow-wrap: anywhere;
+}
+
+.metadata-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 1rem;
+}
+
+.metadata-field {
+	display: flex;
+	min-width: 0;
+	flex-direction: column;
+	gap: 0.4rem;
+}
+
+.metadata-field-wide {
+	grid-column: 1 / -1;
+}
+
+.metadata-field > label {
+	font-weight: 700;
+}
+
+.metadata-field input,
+.metadata-field textarea {
+	width: 100%;
+	padding: 0.65rem 0.75rem;
+	border: 1px solid rgb(48 40 58 / 25%);
+	border-radius: 0.5rem;
+	background: rgb(255 255 255 / 78%);
+	color: #30283a;
+	font: inherit;
+}
+
+.metadata-field textarea {
+	resize: vertical;
+}
+
+.metadata-field input:focus-visible,
+.metadata-field textarea:focus-visible,
+.secondary-button:focus-visible,
+.primary-button:focus-visible {
+	outline: 3px solid #b65d32;
+	outline-offset: 2px;
+}
+
+.cover-dropzone {
+	display: flex;
+	min-height: 125px;
+	align-items: center;
+	justify-content: center;
+	gap: 1rem;
+	padding: 1rem;
+	border: 1px dashed rgb(48 40 58 / 35%);
+	border-radius: 0.8rem;
+	background: rgb(255 255 255 / 34%);
+	text-align: center;
+	cursor: pointer;
+	transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.cover-dropzone:hover,
+.cover-dropzone.is-dragging {
+	border-color: #b65d32;
+	background: rgb(182 93 50 / 8%);
+}
+
+.cover-preview {
+	width: 100px;
+	height: 100px;
+	flex: 0 0 auto;
+	border-radius: 0.4rem;
+	object-fit: cover;
+}
+
+.cover-preview[hidden] {
+	display: none;
+}
+
+.label-status {
+	margin: 1rem 0 0;
+	color: #574d5e;
+	overflow-wrap: anywhere;
+}
+
+.label-status.is-error {
+	color: #9b1c1c;
+}
+
+.metadata-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 0.75rem;
+	margin-top: 1.25rem;
+}
+
+.secondary-button,
+.primary-button {
+	padding: 0.7rem 1rem;
+	border: 1px solid rgb(182 93 50 / 45%);
+	border-radius: 0.5rem;
+	font: inherit;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.secondary-button {
+	background: rgb(255 255 255 / 70%);
+	color: #91451f;
+}
+
+.primary-button {
+	background: #91451f;
+	color: #fff;
+}
+
+.primary-button:disabled {
+	opacity: 0.55;
+	cursor: wait;
+}
+
 .upload-note {
 	margin: 0.5rem 0 0;
 	font-size: 0.82rem;
@@ -335,6 +469,23 @@ a {
 }
 
 @media (max-width: 580px) {
+	.metadata-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.metadata-field-wide {
+		grid-column: auto;
+	}
+
+	.metadata-actions {
+		flex-direction: column-reverse;
+	}
+
+	.secondary-button,
+	.primary-button {
+		width: 100%;
+	}
+
 	.track-grid {
 		grid-template-columns: 1fr;
 	}

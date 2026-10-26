@@ -1,9 +1,355 @@
-@import 'tailwindcss';
+html,
+body {
+	margin: 0;
+	min-height: 100%;
+	font-family: Helvetica, Arial, sans-serif;
+	font-size: 16px;
+	line-height: 1.5;
+	color: #30283a;
+	background: url("../img/watercolor.png") center bottom / cover no-repeat #fff fixed;
+}
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
+* {
+	box-sizing: border-box;
+}
 
-@theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+button,
+input {
+	font: inherit;
+}
+
+a {
+	color: inherit;
+}
+
+.site-shell {
+	display: flex;
+	width: min(100% - 2rem, 1120px);
+	min-height: 100vh;
+	flex-direction: column;
+	margin: 0 auto;
+	padding: 1rem 0;
+}
+
+.glass-panel {
+	border: 1px solid rgb(255 255 255 / 55%);
+	border-radius: 1rem;
+	background: rgb(255 255 255 / 58%);
+	box-shadow: 0 1rem 2.5rem rgb(50 40 60 / 12%);
+	backdrop-filter: blur(14px);
+	-webkit-backdrop-filter: blur(14px);
+}
+
+.site-header {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1.5rem;
+	padding: 0.75rem 1rem;
+}
+
+.site-brand {
+	display: inline-flex;
+	align-items: center;
+	color: #30283a;
+	font-size: 1.2rem;
+	font-weight: 800;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.site-brand-icon {
+	height: 1em;
+	width: auto;
+    margin-right: 0.3rem;
+}
+
+.site-brand span {
+	margin-left: 0.3rem;
+	color: #b65d32;
+	font-weight: 500;
+}
+
+.primary-navigation {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+}
+
+.primary-navigation a {
+	padding: 0.65rem 0.8rem;
+	border-radius: 0.55rem;
+	color: #4b4054;
+	font-size: 0.94rem;
+	text-decoration: none;
+	transition: background-color 160ms ease, color 160ms ease;
+}
+
+.primary-navigation a:hover,
+.primary-navigation a.is-active {
+	background: rgb(182 93 50 / 12%);
+	color: #91451f;
+}
+
+.primary-navigation a:focus-visible,
+.menu-toggle:focus-visible,
+.dropzone:focus-within {
+	outline: 3px solid #b65d32;
+	outline-offset: 3px;
+}
+
+.menu-toggle {
+	display: none;
+	width: 2.75rem;
+	height: 2.75rem;
+	padding: 0.65rem;
+	border: 1px solid rgb(48 40 58 / 18%);
+	border-radius: 0.6rem;
+	background: rgb(255 255 255 / 60%);
+	color: #30283a;
+	cursor: pointer;
+}
+
+.menu-toggle span {
+	display: block;
+	height: 2px;
+	margin: 4px 0;
+	border-radius: 2px;
+	background: currentColor;
+}
+
+.page-content {
+	flex: 1;
+	padding: 3rem 0 2rem;
+}
+
+.page-intro {
+	max-width: 45rem;
+	margin: 0 auto 2rem;
+	text-align: center;
+	text-shadow: 0 1px 2px rgb(48 40 58 / 20%), 0 0 12px rgb(255 255 255 / 80%);
+}
+
+.eyebrow,
+.track-number {
+	margin: 0 0 0.5rem;
+	color: #91451f;
+	font-size: 0.78rem;
+	font-weight: 750;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+}
+
+.page-intro h1 {
+	margin: 0;
+	font-size: clamp(1.3rem, 5vw, 2.5rem);
+	line-height: 1.05;
+}
+
+.page-intro > p:last-child {
+	margin: 0;
+	color: #574d5e;
+	font-size: 0.95rem;
+}
+
+.track-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 1rem;
+}
+
+.track-card {
+	display: grid;
+	grid-template-columns: minmax(96px, 150px) minmax(0, 1fr);
+	align-items: center;
+	gap: 1rem;
+	padding: 1rem;
+}
+
+.track-thumbnail {
+	display: grid;
+	width: 100%;
+	aspect-ratio: 1;
+	place-items: center;
+	border: 1px solid rgb(48 40 58 / 12%);
+	border-radius: 0.75rem;
+	background: linear-gradient(145deg, rgb(182 93 50 / 22%), rgb(97 77 120 / 18%));
+	color: #70402f;
+	font-size: 2.5rem;
+}
+
+.track-details {
+	min-width: 0;
+}
+
+.track-number {
+	font-size: 0.7rem;
+}
+
+.track-details h2 {
+	margin: 0 0 0.85rem;
+	font-size: 1.2rem;
+}
+
+.track-details audio {
+	display: block;
+	width: 100%;
+	height: 2.5rem;
+}
+
+.upload-panel {
+	width: min(100%, 760px);
+	margin: 0 auto;
+	padding: clamp(1.25rem, 5vw, 2.5rem);
+}
+
+.upload-panel h2 {
+	margin: 0 0 1.25rem;
+	font-size: 1.3rem;
+}
+
+.dropzone {
+	display: flex;
+	min-height: 245px;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.55rem;
+	padding: 1.5rem;
+	border: 1px dashed rgb(48 40 58 / 35%);
+	border-radius: 0.8rem;
+	background: rgb(255 255 255 / 34%);
+	text-align: center;
+	cursor: pointer;
+	transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.dropzone:hover,
+.dropzone.is-dragging {
+	border-color: #b65d32;
+	background: rgb(182 93 50 / 8%);
+}
+
+.dropzone-icon {
+	color: #91451f;
+	font-size: 2.5rem;
+	line-height: 1;
+}
+
+.dropzone-title {
+	font-size: 1.05rem;
+	font-weight: 750;
+}
+
+.dropzone-description,
+.file-status,
+.upload-note {
+	color: #574d5e;
+	font-size: 0.92rem;
+}
+
+.dropzone-browse {
+	margin-top: 0.35rem;
+	padding: 0.55rem 0.9rem;
+	border: 1px solid rgb(182 93 50 / 45%);
+	border-radius: 0.5rem;
+	color: #91451f;
+	font-weight: 700;
+}
+
+.file-input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	clip-path: inset(50%);
+}
+
+.file-status {
+	margin: 1rem 0 0;
+	overflow-wrap: anywhere;
+}
+
+.upload-note {
+	margin: 0.5rem 0 0;
+	font-size: 0.82rem;
+}
+
+.site-footer {
+	padding: 1rem 0 0.25rem;
+	color: #574d5e;
+	font-size: 0.9rem;
+	text-align: center;
+}
+
+.site-footer a {
+	margin: 0 0.35rem;
+	color: inherit;
+	text-decoration: none;
+}
+
+.site-footer a:hover {
+	color: #91451f;
+}
+
+@media (max-width: 720px) {
+	.site-shell {
+		width: min(100% - 1.25rem, 560px);
+		padding-top: 0.65rem;
+	}
+
+	.site-header {
+		flex-wrap: wrap;
+		padding: 0.65rem 0.8rem;
+	}
+
+	.menu-toggle {
+		display: block;
+	}
+
+	.primary-navigation {
+		display: none;
+		width: 100%;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.2rem;
+		padding-top: 0.4rem;
+		border-top: 1px solid rgb(48 40 58 / 12%);
+	}
+
+	.primary-navigation.is-open {
+		display: flex;
+	}
+
+	.primary-navigation a {
+		padding: 0.75rem;
+	}
+
+	.page-content {
+		padding-top: 2.25rem;
+	}
+}
+
+@media (max-width: 580px) {
+	.track-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.track-card {
+		grid-template-columns: 104px minmax(0, 1fr);
+		gap: 0.85rem;
+		padding: 0.75rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0.01ms !important;
+	}
 }

@@ -17,7 +17,7 @@
 <body>
 	<div class="site-shell">
 		<header class="site-header glass-panel">
-			<a class="site-brand" href="{{ route('home') }}"><img src="{{ asset('img/pikoe.svg') }}" alt="Audiostudio logo" class="site-brand-icon"> Audio<span>studio</span></a>
+			<a class="site-brand" href="{{ route('home') }}"><img src="{{ asset('img/pikoe.svg') }}" alt="Audiostudio logo" class="site-brand-icon"> <span>studio</span></a>
 			<button class="menu-toggle" type="button" aria-expanded="false" aria-controls="primary-navigation" aria-label="Menu openen">
 				<span></span>
 				<span></span>
@@ -28,6 +28,7 @@
 				<a href="{{ route('mp3-label') }}" @class(['is-active' => request()->routeIs('mp3-label')]) @if(request()->routeIs('mp3-label')) aria-current="page" @endif>MP3 label tool</a>
 				<a href="{{ route('mp3-crop') }}" @class(['is-active' => request()->routeIs('mp3-crop')]) @if(request()->routeIs('mp3-crop')) aria-current="page" @endif>MP3 crop tool</a>
 				<a href="{{ route('convert') }}" @class(['is-active' => request()->routeIs('convert')]) @if(request()->routeIs('convert')) aria-current="page" @endif>Convert tool</a>
+				<a href="{{ route('capture-audio') }}" @class(['is-active' => request()->routeIs('capture-audio')]) @if(request()->routeIs('capture-audio')) aria-current="page" @endif>Capture audio</a>
 			</nav>
 		</header>
 

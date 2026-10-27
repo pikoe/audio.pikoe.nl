@@ -24,7 +24,7 @@ a {
 
 .site-shell {
 	display: flex;
-	width: min(100% - 2rem, 1120px);
+	width: min(100% - 2rem, 1560px);
 	min-height: 100vh;
 	flex-direction: column;
 	margin: 0 auto;
@@ -529,7 +529,7 @@ a {
 }
 
 .crop-editor {
-	width: min(100%, 1120px);
+	width: 100%;
 	margin: 0 auto;
 	padding: clamp(1rem, 3vw, 2rem);
 }

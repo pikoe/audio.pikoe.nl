@@ -513,6 +513,554 @@ a {
 	font-size: 0.82rem;
 }
 
+.crop-upload {
+	width: min(100%, 900px);
+}
+
+.crop-editor {
+	width: min(100%, 1120px);
+	margin: 0 auto;
+	padding: clamp(1rem, 3vw, 2rem);
+}
+
+.crop-editor[hidden] {
+	display: none;
+}
+
+.crop-editor-heading,
+.crop-playback-controls,
+.crop-zoom-controls,
+.crop-actions,
+.crop-export-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+}
+
+.crop-editor-heading {
+	justify-content: space-between;
+	gap: 1.25rem;
+	margin-bottom: 1rem;
+}
+
+.crop-editor-heading h2 {
+	margin: 0;
+	font-size: 1.3rem;
+}
+
+.crop-editor-heading .selected-audio {
+	margin: 0.25rem 0 0;
+	overflow-wrap: anywhere;
+}
+
+.crop-playback-controls {
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.crop-play-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.55rem;
+	min-width: 8.5rem;
+	border-color: #2471a3;
+	background: #2471a3;
+}
+
+.crop-play-button:hover:not(:disabled) {
+	border-color: #1d5b82;
+	background: #1d5b82;
+}
+
+.crop-mode-toggle {
+	display: inline-flex;
+	padding: 0.2rem;
+	border: 1px solid rgb(48 40 58 / 20%);
+	border-radius: 0.6rem;
+	background: rgb(255 255 255 / 55%);
+}
+
+.crop-mode-button {
+	padding: 0.45rem 0.7rem;
+	border: 0;
+	border-radius: 0.4rem;
+	background: transparent;
+	color: #4b4054;
+	font: inherit;
+	font-size: 0.9rem;
+	cursor: pointer;
+}
+
+.crop-mode-button.is-active {
+	background: #176a63;
+	color: #fff;
+}
+
+.crop-mode-button:focus-visible,
+.crop-zoom-controls input:focus-visible,
+.crop-marker-time:focus-visible,
+.crop-marker-line:focus-visible {
+	outline: 3px solid #1f9187;
+	outline-offset: 2px;
+}
+
+.crop-zoom-controls {
+	min-height: 2rem;
+	margin: 1.25rem 0 0.55rem;
+	color: #4b4054;
+	font-weight: 700;
+}
+
+.crop-zoom-controls input {
+	width: min(100%, 250px);
+	accent-color: #176a63;
+}
+
+.crop-zoom-controls output {
+	min-width: 3.2rem;
+	color: #176a63;
+	font-variant-numeric: tabular-nums;
+}
+
+.crop-zoom-hint {
+	margin-left: auto;
+	font-size: 0.82rem;
+	font-weight: 400;
+}
+
+.crop-navigator {
+	position: relative;
+	height: 3.25rem;
+	margin: 0.35rem 0 0.15rem;
+	overflow: hidden;
+	border: 1px solid rgb(48 40 58 / 20%);
+	border-radius: 0.45rem;
+	background: rgb(255 255 255 / 68%);
+	touch-action: none;
+	user-select: none;
+}
+
+.crop-navigator-waveform {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.crop-navigator-shade {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	background: rgb(48 40 58 / 32%);
+	pointer-events: none;
+}
+
+.crop-navigator-shade-start {
+	left: 0;
+	width: 0;
+}
+
+.crop-navigator-shade-end {
+	right: 0;
+	width: 0;
+}
+
+.crop-navigator-marker {
+	position: absolute;
+	z-index: 4;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background: #176a63;
+	pointer-events: none;
+}
+
+.crop-navigator-marker::before,
+.crop-navigator-marker::after {
+	position: absolute;
+	width: 7px;
+	height: 5px;
+	background: #176a63;
+	content: "";
+}
+
+.crop-navigator-marker::before {
+	top: 0;
+}
+
+.crop-navigator-marker::after {
+	bottom: 0;
+}
+
+.crop-navigator-marker[data-crop-navigator-marker="start"]::before {
+	left: 1px;
+	clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.crop-navigator-marker[data-crop-navigator-marker="start"]::after {
+	left: 1px;
+	clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+
+.crop-navigator-marker[data-crop-navigator-marker="end"]::before {
+	right: 1px;
+	clip-path: polygon(100% 0, 0 0, 100% 100%);
+}
+.crop-navigator-marker[data-crop-navigator-marker="end"]::after {
+	right: 1px;
+	clip-path: polygon(100% 0, 0 100%, 100% 100%);
+}
+
+.crop-navigator-playhead {
+	position: absolute;
+	z-index: 5;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background: #2471a3;
+	box-shadow: 0 0 0 1px rgb(255 255 255 / 65%);
+	pointer-events: none;
+}
+
+.crop-navigator-frame {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	min-width: 5%;
+	border: 2px solid #176a63;
+	background: rgb(31 145 135 / 12%);
+	cursor: grab;
+	touch-action: none;
+}
+
+.crop-navigator-frame:active {
+	cursor: grabbing;
+}
+
+.crop-navigator-frame:focus-visible {
+	outline: 3px solid #1f9187;
+	outline-offset: -3px;
+}
+
+.crop-navigator-handle {
+	position: absolute;
+	top: -2px;
+	bottom: -2px;
+	width: 12px;
+	padding: 0;
+	border: 0;
+	background: #176a63;
+	cursor: ew-resize;
+	touch-action: none;
+}
+
+.crop-navigator-handle-start {
+	left: -6px;
+}
+
+.crop-navigator-handle-end {
+	right: -6px;
+}
+
+.crop-navigator-handle:focus-visible {
+	z-index: 1;
+	outline: 3px solid #1f9187;
+	outline-offset: 2px;
+}
+
+.crop-navigator-help {
+	margin: 0 0 0.55rem;
+	color: #574d5e;
+	font-size: 0.78rem;
+}
+
+.crop-timeline-viewport {
+	height: 2.15rem;
+	overflow: hidden;
+	border: 1px solid rgb(48 40 58 / 16%);
+	border-bottom: 0;
+	border-radius: 0.65rem 0.65rem 0 0;
+	background: rgb(255 255 255 / 76%);
+}
+
+.crop-ruler-track {
+	position: relative;
+	height: 100%;
+	transform: translateX(0);
+	will-change: transform;
+}
+
+.crop-ruler-tick {
+	position: absolute;
+	top: 0;
+	height: 100%;
+	padding: 0.2rem 0 0 0.35rem;
+	border-left: 1px solid rgb(48 40 58 / 25%);
+	color: #4b4054;
+	font-size: 0.72rem;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.crop-wave-viewport {
+	overflow: auto hidden;
+	border: 1px solid rgb(48 40 58 / 16%);
+	border-radius: 0 0 0.65rem 0.65rem;
+	background: rgb(255 255 255 / 68%);
+	scrollbar-color: #8aa9a5 rgb(48 40 58 / 8%);
+	scrollbar-width: thin;
+	overscroll-behavior-x: contain;
+}
+
+.crop-wave-viewport:focus-visible {
+	outline: 3px solid #1f9187;
+	outline-offset: 2px;
+}
+
+.crop-wave-track {
+	position: relative;
+	min-width: 100%;
+	height: 224px;
+	overflow: hidden;
+	touch-action: pan-y;
+}
+
+.crop-wave-lane {
+	position: relative;
+	display: block;
+	width: 100%;
+	height: 50%;
+	border-bottom: 1px solid rgb(48 40 58 / 12%);
+	background-image: linear-gradient(to bottom, transparent calc(50% - 1px), rgb(48 40 58 / 12%) 50%, transparent calc(50% + 1px));
+}
+
+.crop-wave-lane[hidden] {
+	display: none;
+}
+
+.crop-wave-lane canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.crop-channel-label {
+	position: absolute;
+	z-index: 1;
+	top: 0.35rem;
+	left: 0.4rem;
+	padding: 0.05rem 0.3rem;
+	border-radius: 0.25rem;
+	background: rgb(255 255 255 / 78%);
+	color: #574d5e;
+	font-size: 0.68rem;
+	font-weight: 700;
+	pointer-events: none;
+}
+
+.crop-selection-shade {
+	position: absolute;
+	z-index: 2;
+	top: 0;
+	bottom: 0;
+	background: rgb(48 40 58 / 25%);
+	pointer-events: none;
+}
+
+.crop-selection-shade-start {
+	left: 0;
+	width: 0;
+}
+
+.crop-selection-shade-end {
+	right: 0;
+	width: 0;
+}
+
+.crop-marker {
+	position: absolute;
+	z-index: 3;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	color: #d97706;
+	touch-action: none;
+}
+
+.crop-marker::before,
+.crop-marker::after {
+	position: absolute;
+	z-index: 1;
+	width: 9px;
+	height: 7px;
+	background: currentColor;
+	content: "";
+	pointer-events: none;
+}
+
+.crop-marker::before {
+	top: 0;
+}
+
+.crop-marker::after {
+	bottom: 0;
+}
+
+.crop-marker-start::before {
+	left: 1px;
+	clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.crop-marker-start::after {
+	left: 1px;
+	clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+.crop-marker-end::before {
+	right: 1px;
+	clip-path: polygon(100% 0, 0 0, 100% 100%);
+}
+.crop-marker-end::after {
+	right: 1px;
+	clip-path: polygon(100% 0, 0 100%, 100% 100%);
+}
+
+.crop-marker.crop-marker-playhead::before {
+	left: -10px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+}
+.crop-marker.crop-marker-playhead::after {
+	background: #fff;
+	left: -2px;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 7px;
+	height: 7px;
+	clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.crop-marker-line {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: -10px;
+	width: 24px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	cursor: ew-resize;
+	touch-action: none;
+}
+
+.crop-marker-line::after {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 10px;
+	width: 2px;
+	background: currentColor;
+	box-shadow: 0 0 0 1px rgb(255 255 255 / 65%);
+	content: "";
+	pointer-events: none;
+}
+
+.crop-marker-time {
+	display: none;
+	position: absolute;
+	z-index: 1;
+	width: 6.8rem;
+	height: 1.65rem;
+	padding: 0.1rem 0.3rem;
+	border: 1px solid rgb(255 255 255 / 85%);
+	border-radius: 0.3rem;
+	background: var(--crop-marker-color, #2471a3);
+	color: #fff;
+	font-size: 0.72rem;
+	font-variant-numeric: tabular-nums;
+	line-height: 1.4;
+	white-space: nowrap;
+	text-align: center;
+	pointer-events: auto;
+}
+
+.crop-marker.is-active .crop-marker-time {
+	display: block;
+}
+
+.crop-marker-start {
+	--crop-marker-color: #176a63;
+
+	color: #176a63;
+}
+
+.crop-marker-time-start {
+	top: 0.35rem;
+	left: 0.4rem;
+}
+
+.crop-marker-end {
+	--crop-marker-color: #176a63;
+
+	color: #176a63;
+}
+
+.crop-marker-time-end {
+	top: 0.35rem;
+	left: 0.4rem;
+	transform: translateX(-100%);
+}
+
+.crop-marker-playhead {
+	z-index: 4;
+	--crop-marker-color: #2471a3;
+
+	color: #2471a3;
+}
+
+.crop-marker-time-playhead {
+	top: 0.35rem;
+	left: 0.4rem;
+}
+
+.crop-marker-time[aria-invalid="true"] {
+	border-color: #a33b37;
+	background: #a33b37;
+}
+
+.crop-time-help {
+	margin: 0.6rem 0 0;
+	color: #574d5e;
+	font-size: 0.82rem;
+}
+
+.crop-status {
+	min-height: 1.5rem;
+	margin: 0.8rem 0 0;
+	color: #176a63;
+	overflow-wrap: anywhere;
+}
+
+.crop-status.is-error {
+	color: #9b1c1c;
+}
+
+.crop-actions {
+	justify-content: space-between;
+	margin-top: 0.75rem;
+}
+
+.crop-export-actions {
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.crop-export-actions button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
 .site-footer {
 	padding: 1rem 0 0.25rem;
 	color: #574d5e;
@@ -571,6 +1119,26 @@ a {
 @media (max-width: 580px) {
 	.metadata-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.crop-editor-heading,
+	.crop-actions {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.crop-playback-controls,
+	.crop-export-actions {
+		justify-content: flex-start;
+	}
+
+	.crop-export-actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.crop-zoom-hint {
+		display: none;
 	}
 
 	.metadata-field-wide {

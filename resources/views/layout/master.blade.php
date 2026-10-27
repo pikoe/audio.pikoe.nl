@@ -17,7 +17,7 @@
 <body>
 	<div class="site-shell">
 		<header class="site-header glass-panel">
-			<a class="site-brand" href="{{ route('home') }}"><img src="{{ asset('img/pikoe.svg') }}" alt="Audiostudio logo" class="site-brand-icon"> <span>studio</span></a>
+			<a class="site-brand" href="{{ route('home') }}"><img src="{{ asset('img/pikoe-audio-studio.svg') }}" alt="Audio studio logo" title="Pikoe audio studio" class="site-brand-icon"></a>
 			<button class="menu-toggle" type="button" aria-expanded="false" aria-controls="primary-navigation" aria-label="Menu openen">
 				<span></span>
 				<span></span>

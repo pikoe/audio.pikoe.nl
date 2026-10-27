@@ -62,6 +62,424 @@ function metadataText(value) {
 	return '';
 }
 
+function initializeDiscography() {
+	const tracks = [...document.querySelectorAll('[data-discography-track]')];
+	if (!tracks.length) {
+		return;
+	}
+
+	const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+	let audioContext = null;
+	let activeTrack = null;
+
+	const trackStates = new Map(tracks.map((track) => {
+		const audio = track.querySelector('audio');
+		const title = track.querySelector('[data-track-title]');
+		const artist = track.querySelector('[data-track-artist]');
+		const cover = track.querySelector('[data-track-cover]');
+		const playButton = track.querySelector('[data-track-play]');
+		const downloadButton = track.querySelector('[data-track-download]');
+		const timeDisplay = track.querySelector('[data-track-time]');
+		const waveformCanvas = track.querySelector('[data-track-waveform]');
+
+		if (
+			!(audio instanceof HTMLAudioElement)
+			|| !(title instanceof HTMLElement)
+			|| !(artist instanceof HTMLElement)
+			|| !(cover instanceof HTMLImageElement)
+			|| !(playButton instanceof HTMLButtonElement)
+			|| !(downloadButton instanceof HTMLButtonElement)
+			|| !(timeDisplay instanceof HTMLElement)
+			|| !(waveformCanvas instanceof HTMLCanvasElement)
+		) {
+			return [track, null];
+		}
+
+		return [track, {
+			audio,
+			title,
+			artist,
+			cover,
+			playButton,
+			downloadButton,
+			timeDisplay,
+			waveformCanvas,
+			waveformContext: waveformCanvas.getContext('2d'),
+			filename: track.dataset.trackFilename ?? '',
+			url: track.dataset.trackUrl ?? '',
+			blob: null,
+			objectUrl: null,
+			loadPromise: null,
+			waveform: null,
+			waveformPromise: null,
+			animationFrame: null,
+		}];
+	}).filter(([, state]) => state !== null));
+
+	function updatePlaybackButton(state, isPlaying) {
+		const icon = state.playButton.querySelector('.fas');
+		const buttonText = state.playButton.querySelector('span');
+		const title = state.title.textContent;
+		if (icon instanceof HTMLElement) {
+			icon.classList.toggle('fa-play', !isPlaying);
+			icon.classList.toggle('fa-pause', isPlaying);
+		}
+		if (buttonText instanceof HTMLElement) {
+			buttonText.textContent = isPlaying ? 'Pauzeren' : 'Afspelen';
+		}
+		state.playButton.setAttribute('aria-label', `${isPlaying ? 'Pauzeer' : 'Speel'} ${title}`);
+		state.playButton.setAttribute('aria-pressed', String(isPlaying));
+		state.track.classList.toggle('is-playing', isPlaying);
+	}
+
+	function formatTrackTime(seconds) {
+		const totalSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+		const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+		const remainingSeconds = (totalSeconds % 60).toString().padStart(2, '0');
+		return `${minutes}:${remainingSeconds}`;
+	}
+
+	function updateTrackTime(state) {
+		state.timeDisplay.textContent = `${formatTrackTime(state.audio.currentTime)} / ${formatTrackTime(state.audio.duration)}`;
+	}
+
+	function drawWaveform(state) {
+		if (!state.waveformContext) {
+			return;
+		}
+
+		const bounds = state.waveformCanvas.getBoundingClientRect();
+		if (bounds.width <= 0) {
+			return;
+		}
+
+		const pixelRatio = window.devicePixelRatio || 1;
+		const canvasWidth = Math.round(bounds.width * pixelRatio);
+		const canvasHeight = Math.round(bounds.height * pixelRatio);
+		if (state.waveformCanvas.width !== canvasWidth || state.waveformCanvas.height !== canvasHeight) {
+			state.waveformCanvas.width = canvasWidth;
+			state.waveformCanvas.height = canvasHeight;
+		}
+
+		const context = state.waveformContext;
+		context.clearRect(0, 0, canvasWidth, canvasHeight);
+		const isLoading = state.waveform === null;
+		const barCount = Math.max(1, Math.floor(bounds.width / 2));
+		const progress = Number.isFinite(state.audio.duration) && state.audio.duration > 0
+			? state.audio.currentTime / state.audio.duration
+			: 0;
+		const barWidth = 2 * pixelRatio;
+		const barGap = pixelRatio;
+		const animationTime = performance.now() / 220;
+		for (let index = 0; index < barCount; index++) {
+			let amplitude = 0.12 + ((Math.sin(index * 0.42 - animationTime) + 1) / 2) * 0.72;
+			if (!isLoading) {
+				const start = Math.floor(index * state.waveform.length / barCount);
+				const end = Math.max(start + 1, Math.floor((index + 1) * state.waveform.length / barCount));
+				amplitude = 0;
+				for (let sampleIndex = start; sampleIndex < end; sampleIndex++) {
+					amplitude = Math.max(amplitude, state.waveform[sampleIndex]);
+				}
+			}
+			const barHeight = Math.max(pixelRatio, amplitude * canvasHeight);
+			context.fillStyle = !isLoading && index / barCount < progress ? '#777777' : '#c7c7c7';
+			context.fillRect(index * barWidth, canvasHeight - barHeight, barGap, barHeight);
+		}
+
+		if (isLoading && state.animationFrame === null) {
+			state.animationFrame = window.requestAnimationFrame(() => {
+				state.animationFrame = null;
+				drawWaveform(state);
+			});
+		}
+	}
+
+	async function loadWaveform(state) {
+		if (state.waveform || state.waveformPromise || !state.blob) {
+			return state.waveformPromise;
+		}
+		if (!AudioContextClass) {
+			state.waveform = new Float32Array(64);
+			if (state.animationFrame !== null) {
+				window.cancelAnimationFrame(state.animationFrame);
+				state.animationFrame = null;
+			}
+			drawWaveform(state);
+			return;
+		}
+
+		state.waveformPromise = (async () => {
+			if (!audioContext) {
+				audioContext = new AudioContextClass();
+			}
+			const audioBuffer = await audioContext.decodeAudioData(await state.blob.arrayBuffer());
+			const sampleCount = audioBuffer.length;
+			const bucketCount = Math.min(1024, sampleCount);
+			const peaks = new Float32Array(bucketCount);
+			const channels = Array.from({ length: audioBuffer.numberOfChannels }, (_, channel) => audioBuffer.getChannelData(channel));
+			for (let bucket = 0; bucket < bucketCount; bucket++) {
+				const start = Math.floor(bucket * sampleCount / bucketCount);
+				const end = Math.max(start + 1, Math.floor((bucket + 1) * sampleCount / bucketCount));
+				let peak = 0;
+				const sampleStep = Math.max(1, Math.floor((end - start) / 256));
+				for (let sampleIndex = start; sampleIndex < end; sampleIndex += sampleStep) {
+					let combinedAmplitude = 0;
+					for (const channel of channels) {
+						combinedAmplitude += Math.abs(channel[sampleIndex]);
+					}
+					peak = Math.max(peak, combinedAmplitude);
+				}
+				peaks[bucket] = Math.min(1, peak);
+			}
+			state.waveform = peaks;
+			if (state.animationFrame !== null) {
+				window.cancelAnimationFrame(state.animationFrame);
+				state.animationFrame = null;
+			}
+			drawWaveform(state);
+		})().catch((error) => {
+			state.waveform = new Float32Array(64);
+			drawWaveform(state);
+			console.error(`Kon de geluidsvorm voor ${state.filename} niet berekenen.`, error);
+		}).finally(() => {
+			state.waveformPromise = null;
+		});
+
+		return state.waveformPromise;
+	}
+
+	async function loadTrack(state) {
+		if (state.blob) {
+			return state.blob;
+		}
+		if (state.loadPromise) {
+			return state.loadPromise;
+		}
+
+		state.loadPromise = (async () => {
+			const response = await fetch(state.url);
+			if (!response.ok) {
+				throw new Error(`MP3 laden mislukt: HTTP ${response.status}`);
+			}
+
+			state.blob = await response.blob();
+			state.objectUrl = URL.createObjectURL(state.blob);
+			state.audio.src = state.objectUrl;
+			state.audio.load();
+			state.downloadButton.disabled = false;
+			void loadWaveform(state);
+
+			try {
+				const file = new File([state.blob], state.filename, { type: state.blob.type || 'audio/mpeg' });
+				const tags = await readMp3Tags(file);
+				const title = metadataText(tags.title ?? getFrameData(tags, 'TIT2'));
+				const artist = metadataText(tags.artist ?? getFrameData(tags, 'TPE1'));
+				state.title.textContent = title || state.filename.replace(/\.mp3$/i, '');
+				state.artist.textContent = artist || 'Onbekende artiest';
+				state.track.setAttribute('aria-label', `Nummer afspelen: ${state.title.textContent}`);
+				state.playButton.setAttribute('aria-label', `Speel ${state.title.textContent}`);
+
+				const picture = tags.picture ?? getFrameData(tags, 'APIC');
+				if (picture?.data?.length) {
+					const coverBlob = new Blob([new Uint8Array(picture.data)], {
+						type: typeof picture.format === 'string' ? picture.format : 'application/octet-stream',
+					});
+					state.cover.src = URL.createObjectURL(coverBlob);
+					state.cover.hidden = false;
+					const fallbackIcon = state.cover.parentElement?.querySelector('.fa-music');
+					if (fallbackIcon instanceof HTMLElement) {
+						fallbackIcon.hidden = true;
+					}
+					state.cover.alt = `Cover van ${state.title.textContent}`;
+				}
+			} catch (error) {
+				state.title.textContent = state.filename.replace(/\.mp3$/i, '');
+				state.artist.textContent = 'Onbekende artiest';
+				console.error(`Kon de MP3-tags van ${state.filename} niet uitlezen.`, error);
+			}
+
+			drawWaveform(state);
+			return state.blob;
+		})().catch((error) => {
+			state.loadPromise = null;
+			console.error(`Kon ${state.filename} niet laden.`, error);
+			throw error;
+		});
+
+		return state.loadPromise;
+	}
+
+	async function startPlayback(state) {
+		if (activeTrack && activeTrack !== state.track) {
+			const previousState = trackStates.get(activeTrack);
+			previousState?.audio.pause();
+		}
+
+		activeTrack = state.track;
+		if (AudioContextClass) {
+			if (!audioContext) {
+				audioContext = new AudioContextClass();
+			}
+			if (audioContext.state === 'suspended') {
+				await audioContext.resume();
+			}
+			void loadWaveform(state);
+		}
+		await state.audio.play();
+	}
+
+	async function togglePlayback(track) {
+		const state = trackStates.get(track);
+		if (!state) {
+			return;
+		}
+
+		if (activeTrack === track && !state.audio.paused) {
+			state.audio.pause();
+			return;
+		}
+
+		try {
+			await loadTrack(state);
+			await startPlayback(state);
+		} catch (error) {
+			console.error(`Kon ${state.filename} niet afspelen.`, error);
+		}
+	}
+
+	async function seekAndPlay(track, event) {
+		const state = trackStates.get(track);
+		event.preventDefault();
+		event.stopPropagation();
+		if (!state) {
+			return;
+		}
+
+		const bounds = state.waveformCanvas.getBoundingClientRect();
+		if (bounds.width <= 0) {
+			return;
+		}
+		const progress = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
+
+		try {
+			await loadTrack(state);
+			if (state.audio.readyState < HTMLMediaElement.HAVE_METADATA) {
+				await new Promise((resolve, reject) => {
+					const onLoadedMetadata = () => {
+						cleanup();
+						resolve();
+					};
+					const onError = () => {
+						cleanup();
+						reject(new Error('De audiometadata kon niet worden geladen.'));
+					};
+					const cleanup = () => {
+						state.audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+						state.audio.removeEventListener('error', onError);
+					};
+
+					state.audio.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+					state.audio.addEventListener('error', onError, { once: true });
+					state.audio.preload = 'auto';
+					state.audio.load();
+				});
+			}
+			if (!Number.isFinite(state.audio.duration) || state.audio.duration <= 0) {
+				throw new Error('De duur van de audio is niet beschikbaar.');
+			}
+
+			state.audio.currentTime = progress * state.audio.duration;
+			await startPlayback(state);
+		} catch (error) {
+			console.error(`Kon niet naar het gekozen punt in ${state.filename} springen.`, error);
+		}
+	}
+
+	for (const [track, state] of trackStates) {
+		state.track = track;
+		updateTrackTime(state);
+		drawWaveform(state);
+		state.audio.addEventListener('play', () => updatePlaybackButton(state, true));
+		state.audio.addEventListener('pause', () => updatePlaybackButton(state, false));
+		state.audio.addEventListener('ended', () => {
+			updatePlaybackButton(state, false);
+			if (activeTrack === track) {
+				activeTrack = null;
+			}
+			drawWaveform(state);
+		});
+		state.audio.addEventListener('timeupdate', () => {
+			updateTrackTime(state);
+			drawWaveform(state);
+		});
+		state.audio.addEventListener('durationchange', () => {
+			updateTrackTime(state);
+			drawWaveform(state);
+		});
+		state.audio.addEventListener('loadedmetadata', () => updateTrackTime(state));
+		state.audio.addEventListener('seeked', () => updateTrackTime(state));
+
+		state.waveformCanvas.addEventListener('click', (event) => {
+			void seekAndPlay(track, event);
+		});
+		track.addEventListener('click', (event) => {
+			if (event.target instanceof Element && event.target.closest('[data-track-download]')) {
+				return;
+			}
+			void togglePlayback(track);
+		});
+		track.addEventListener('keydown', (event) => {
+			if (event.target === track && (event.key === 'Enter' || event.key === ' ')) {
+				event.preventDefault();
+				void togglePlayback(track);
+			}
+		});
+		state.downloadButton.addEventListener('click', async (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			try {
+				await loadTrack(state);
+				const link = document.createElement('a');
+				link.href = state.objectUrl;
+				link.download = state.filename;
+				document.body.append(link);
+				link.click();
+				link.remove();
+			} catch (error) {
+				console.error(`Kon ${state.filename} niet downloaden.`, error);
+			}
+		});
+	}
+
+	const observer = 'IntersectionObserver' in window
+		? new IntersectionObserver((entries) => {
+			for (const entry of entries) {
+				if (entry.isIntersecting) {
+					observer.unobserve(entry.target);
+					const state = trackStates.get(entry.target);
+					if (state) {
+						void loadTrack(state).catch(() => {});
+					}
+				}
+			}
+		}, { rootMargin: '120px' })
+		: null;
+
+	for (const [track, state] of trackStates) {
+		if (observer) {
+			observer.observe(track);
+		} else {
+			void loadTrack(state).catch(() => {});
+		}
+	}
+
+	window.addEventListener('resize', () => {
+		for (const state of trackStates.values()) {
+			drawWaveform(state);
+		}
+	});
+}
+
 function isValidCalendarDate(year, month, day) {
 	if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day) || year < 1 || month < 1 || month > 12) {
 		return false;
@@ -429,6 +847,7 @@ function initializeMp3LabelTool() {
 
 document.addEventListener('DOMContentLoaded', () => {
 	initializeMp3LabelTool();
+	initializeDiscography();
 
 	const menuToggle = document.querySelector('.menu-toggle');
 	const navigation = document.querySelector('#primary-navigation');

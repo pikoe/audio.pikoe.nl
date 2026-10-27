@@ -81,6 +81,17 @@
 				</label>
 				<p class="file-status" id="mp3-cover-file-status" data-cover-file-status aria-live="polite">Geen nieuwe cover gekozen.</p>
 			</div>
+			<div class="metadata-field metadata-field-wide extra-pictures-panel" data-extra-pictures hidden>
+				<p data-extra-picture-summary></p>
+				<ul data-extra-picture-list></ul>
+				<label for="mp3-extra-picture-action">Omgaan met extra afbeeldingen</label>
+				<select id="mp3-extra-picture-action" data-extra-picture-action>
+					<option value="keep">Extra afbeeldingen behouden</option>
+					<option value="replace">Vervangen door de gekozen coverafbeelding</option>
+					<option value="remove">Extra afbeeldingen weglaten</option>
+				</select>
+				<p class="file-status">Voor vervangen moet hierboven een nieuwe coverafbeelding zijn gekozen.</p>
+			</div>
 		</div>
 
 		<p class="label-status" data-label-status aria-live="polite"></p>

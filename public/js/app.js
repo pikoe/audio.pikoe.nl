@@ -46,6 +46,22 @@ function getFrameData(tags, frameId) {
 	return selectedFrame?.data ?? '';
 }
 
+function getPictureFrames(tags) {
+	const taggedPictures = tags.APIC ?? tags.PIC;
+	const frames = Array.isArray(taggedPictures) ? taggedPictures : taggedPictures ? [taggedPictures] : [];
+	const pictures = frames
+		.map((frame) => {
+			return frame?.id === 'APIC' || frame?.id === 'PIC' ? frame.data : frame;
+		})
+		.filter((picture) => picture?.data?.length);
+
+	if (pictures.length) {
+		return pictures;
+	}
+
+	return tags.picture?.data?.length ? [tags.picture] : [];
+}
+
 function metadataText(value) {
 	if (typeof value === 'string' || typeof value === 'number') {
 		return String(value);
@@ -508,6 +524,10 @@ function initializeMp3LabelTool() {
 	const coverStatus = editor.querySelector('[data-cover-file-status]');
 	const coverTitle = editor.querySelector('[data-cover-title]');
 	const coverPreview = editor.querySelector('[data-cover-preview]');
+	const extraPicturesPanel = editor.querySelector('[data-extra-pictures]');
+	const extraPictureSummary = editor.querySelector('[data-extra-picture-summary]');
+	const extraPictureList = editor.querySelector('[data-extra-picture-list]');
+	const extraPictureAction = editor.querySelector('[data-extra-picture-action]');
 
 	if (
 		!(fileInput instanceof HTMLInputElement)
@@ -522,16 +542,74 @@ function initializeMp3LabelTool() {
 		|| !(coverStatus instanceof HTMLElement)
 		|| !(coverTitle instanceof HTMLElement)
 		|| !(coverPreview instanceof HTMLImageElement)
+		|| !(extraPicturesPanel instanceof HTMLElement)
+		|| !(extraPictureSummary instanceof HTMLElement)
+		|| !(extraPictureList instanceof HTMLUListElement)
+		|| !(extraPictureAction instanceof HTMLSelectElement)
 	) {
 		return;
 	}
 
 	let selectedFile = null;
 	let selectedCoverFile = null;
-	let originalPicture = null;
+	let originalCoverPicture = null;
+	let extraPictures = [];
 	let coverUrl = null;
 	let selectionId = 0;
 	let coverSelectionId = 0;
+	const pictureTypeLabels = [
+		'Overig',
+		'Bestandspictogram (32×32)',
+		'Ander pictogram',
+		'Voorkant-cover',
+		'Achterkant-cover',
+		'Pagina uit het boekje',
+		'Media (bijv. cd-label)',
+		'Leadartiest',
+		'Artiest',
+		'Dirigent',
+		'Band of orkest',
+		'Componist',
+		'Tekstschrijver',
+		'Opnamelocatie',
+		'Tijdens opname',
+		'Tijdens uitvoering',
+		'Filmscreenshot',
+		'Felgekleurde vis',
+		'Illustratie',
+		'Logo van band of artiest',
+		'Logo van uitgever of studio',
+	];
+	const pictureTypeNames = [
+		'Other',
+		"32x32 pixels 'file icon' (PNG only)",
+		'Other file icon',
+		'Cover (front)',
+		'Cover (back)',
+		'Leaflet page',
+		'Media (e.g. label side of CD)',
+		'Lead artist/lead performer/soloist',
+		'Artist/performer',
+		'Conductor',
+		'Band/Orchestra',
+		'Composer',
+		'Lyricist/text writer',
+		'Recording Location',
+		'During recording',
+		'During performance',
+		'Movie/video screen capture',
+		'A bright coloured fish',
+		'Illustration',
+		'Band/artist logotype',
+		'Publisher/Studio logotype',
+	];
+	const getPictureTypeIndex = (picture) => {
+		if (Number.isInteger(picture.type)) {
+			return picture.type >= 0 && picture.type < pictureTypeLabels.length ? picture.type : -1;
+		}
+
+		return pictureTypeNames.indexOf(picture.type);
+	};
 
 	const setStatus = (message, isError = false) => {
 		status.textContent = message;
@@ -548,9 +626,9 @@ function initializeMp3LabelTool() {
 	};
 
 	const showOriginalPicture = () => {
-		if (originalPicture?.data?.length) {
-			const mimeType = typeof originalPicture.format === 'string' ? originalPicture.format : 'application/octet-stream';
-			showCoverPreview(new Blob([new Uint8Array(originalPicture.data)], { type: mimeType }));
+		if (originalCoverPicture?.data?.length) {
+			const mimeType = typeof originalCoverPicture.format === 'string' ? originalCoverPicture.format : 'application/octet-stream';
+			showCoverPreview(new Blob([new Uint8Array(originalCoverPicture.data)], { type: mimeType }));
 			coverTitle.textContent = 'Bestaande cover gevonden. Kies of sleep een nieuwe afbeelding om deze te vervangen.';
 			coverStatus.textContent = 'De bestaande cover blijft behouden als je geen nieuwe kiest.';
 			return;
@@ -560,6 +638,28 @@ function initializeMp3LabelTool() {
 		coverPreview.removeAttribute('src');
 		coverTitle.textContent = 'Sleep een JPG- of PNG-afbeelding hierheen of kies een bestand.';
 		coverStatus.textContent = 'Geen cover in de MP3 gevonden.';
+	};
+
+	const showExtraPictures = () => {
+		extraPicturesPanel.hidden = extraPictures.length === 0;
+		extraPictureList.replaceChildren();
+
+		if (!extraPictures.length) {
+			extraPictureAction.value = 'keep';
+			return;
+		}
+
+		extraPictureSummary.textContent = `${extraPictures.length} extra ingebedde ${extraPictures.length === 1 ? 'afbeelding is' : 'afbeeldingen zijn'} gevonden:`;
+		extraPictures.forEach((picture) => {
+			const item = document.createElement('li');
+			const pictureType = getPictureTypeIndex(picture);
+			const pictureTypeLabel = pictureTypeLabels[pictureType] ?? `Onbekend afbeeldingstype (${picture.type})`;
+			const description = typeof picture.description === 'string' && picture.description.trim()
+				? ` — ${picture.description.trim()}`
+				: '';
+			item.textContent = `${pictureTypeLabel}${description}`;
+			extraPictureList.append(item);
+		});
 	};
 
 	const setField = (name, value) => {
@@ -602,8 +702,11 @@ function initializeMp3LabelTool() {
 		setField('comment', metadataText(tags.comment ?? getFrameData(tags, 'COMM')));
 		setField('lyrics', metadataText(tags.lyrics ?? getFrameData(tags, 'USLT')));
 
-		originalPicture = tags.picture ?? getFrameData(tags, 'APIC');
+		const pictures = getPictureFrames(tags);
+		originalCoverPicture = pictures.find((picture) => getPictureTypeIndex(picture) === 3) ?? null;
+		extraPictures = pictures.filter((picture) => picture !== originalCoverPicture);
 		showOriginalPicture();
+		showExtraPictures();
 	};
 
 	const loadFile = async (file) => {
@@ -612,9 +715,11 @@ function initializeMp3LabelTool() {
 			uploadStatus.textContent = 'Kies een bestand met de extensie .mp3.';
 			return;
 		}
-
 		selectedFile = null;
-		originalPicture = null;
+		selectedFile = null;
+		originalCoverPicture = null;
+		extraPictures = [];
+		showExtraPictures();
 		saveButton.disabled = true;
 		uploadStatus.textContent = `Tags uitlezen: ${file.name}`;
 		setStatus('');
@@ -742,9 +847,11 @@ function initializeMp3LabelTool() {
 		coverSelectionId++;
 		selectedFile = null;
 		selectedCoverFile = null;
-		originalPicture = null;
+		originalCoverPicture = null;
+		extraPictures = [];
 		fileInput.value = '';
 		coverInput.value = '';
+		showExtraPictures();
 		saveButton.disabled = true;
 		editor.hidden = true;
 		uploadPanel.hidden = false;
@@ -757,6 +864,10 @@ function initializeMp3LabelTool() {
 
 	saveButton.addEventListener('click', async () => {
 		if (!selectedFile) {
+			return;
+		}
+		if (extraPictures.length && extraPictureAction.value === 'replace' && !selectedCoverFile) {
+			setStatus('Kies eerst een nieuwe coverafbeelding om de extra afbeeldingen te vervangen.', true);
 			return;
 		}
 		saveButton.disabled = true;
@@ -815,14 +926,33 @@ function initializeMp3LabelTool() {
 				}
 			}
 
-			const cover = selectedCoverFile;
-			if (cover) {
-				writer.setFrame('APIC', { type: 3, data: await cover.arrayBuffer(), description: 'Album cover' });
-			} else if (originalPicture?.data?.length) {
+			const extraPictureActionValue = extraPictures.length ? extraPictureAction.value : 'keep';
+			const selectedCoverData = selectedCoverFile ? await selectedCoverFile.arrayBuffer() : null;
+			const coverPicture = selectedCoverData
+				? { type: 3, data: selectedCoverData, description: 'Album cover' }
+				: originalCoverPicture;
+			const picturesToWrite = [];
+
+			if (coverPicture) {
+				picturesToWrite.push(coverPicture);
+			}
+
+			if (extraPictureActionValue === 'keep') {
+				picturesToWrite.push(...extraPictures);
+			} else if (extraPictureActionValue === 'replace' && selectedCoverData) {
+				picturesToWrite.push(...extraPictures.map((picture) => ({
+					type: Math.max(0, getPictureTypeIndex(picture)),
+					data: selectedCoverData,
+					description: typeof picture.description === 'string' ? picture.description : '',
+				})));
+			}
+
+			for (const picture of picturesToWrite) {
+				const pictureType = getPictureTypeIndex(picture);
 				writer.setFrame('APIC', {
-					type: 3,
-					data: new Uint8Array(originalPicture.data).buffer,
-					description: originalPicture.description || 'Album cover',
+					type: pictureType < 0 ? 0 : pictureType,
+					data: new Uint8Array(picture.data).buffer,
+					description: typeof picture.description === 'string' ? picture.description : '',
 				});
 			}
 

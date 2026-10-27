@@ -47,34 +47,6 @@
 			</div>
 		</div>
 
-		<div class="crop-zoom-controls">
-			<label for="crop-zoom">Zoom</label>
-			<input id="crop-zoom" type="range" min="1" max="20" step="0.1" value="1" data-crop-zoom>
-			<output for="crop-zoom" data-crop-zoom-value>1×</output>
-			<span class="crop-zoom-hint">Alt + scroll om horizontaal door de audio te bewegen.</span>
-		</div>
-
-		<div class="crop-navigator" data-crop-navigator role="group" aria-label="Audio-navigator">
-			<canvas class="crop-navigator-waveform" data-crop-navigator-waveform aria-hidden="true"></canvas>
-			<div class="crop-navigator-shade crop-navigator-shade-start" data-crop-navigator-shade="start" aria-hidden="true"></div>
-			<div class="crop-navigator-shade crop-navigator-shade-end" data-crop-navigator-shade="end" aria-hidden="true"></div>
-			<div class="crop-navigator-marker" data-crop-navigator-marker="start" aria-hidden="true"></div>
-			<div class="crop-navigator-marker" data-crop-navigator-marker="end" aria-hidden="true"></div>
-			<div class="crop-navigator-playhead" data-crop-navigator-playhead aria-hidden="true"></div>
-			<div
-				class="crop-navigator-frame"
-				data-crop-navigator-frame
-				tabindex="0"
-				role="group"
-				aria-label="Zichtbaar audiogebied. Gebruik de pijltjestoetsen om te navigeren en plus of min om te zoomen."
-				aria-describedby="crop-navigator-help"
-			>
-				<button class="crop-navigator-handle crop-navigator-handle-start" type="button" data-crop-navigator-handle="start" aria-label="Begin van het zichtbare gebied verslepen om te zoomen"></button>
-				<button class="crop-navigator-handle crop-navigator-handle-end" type="button" data-crop-navigator-handle="end" aria-label="Einde van het zichtbare gebied verslepen om te zoomen"></button>
-			</div>
-		</div>
-		<p class="crop-navigator-help" id="crop-navigator-help">De volledige audio staat in dit overzicht. Sleep het kader om te navigeren of sleep een rand om het zoomniveau aan te passen.</p>
-
 		<div class="crop-timeline-viewport" data-crop-ruler-viewport aria-hidden="true">
 			<div class="crop-ruler-track" data-crop-ruler></div>
 		</div>
@@ -98,11 +70,11 @@
 				<div class="crop-selection-shade crop-selection-shade-end" data-crop-shade="end" aria-hidden="true"></div>
 				<div class="crop-marker crop-marker-start" data-crop-marker="start">
 					<button class="crop-marker-line" type="button" role="slider" aria-label="Begin van het fragment" aria-valuemin="0" aria-valuenow="0" tabindex="0"></button>
-					<input class="crop-marker-time crop-marker-time-start" type="text" inputmode="decimal" autocomplete="off" placeholder="00:00.00" pattern="[0-9]{2,}:[0-5][0-9]\.[0-9]{2}" aria-label="Begintijd in minuten, seconden en honderdsten" aria-describedby="crop-time-format" data-crop-marker-time="start" data-crop-time="start" value="00:00.00">
+					<input class="crop-marker-time crop-marker-time-start" type="text" inputmode="decimal" autocomplete="off" placeholder="00:00.00" pattern="[0-9]{2,}:[0-5][0-9]\.[0-9]{2}" aria-label="Begintijd in minuten, seconden en honderdsten" aria-description="Gebruik MM:SS.uu, bijvoorbeeld 01:23.45." data-crop-marker-time="start" data-crop-time="start" value="00:00.00">
 				</div>
 				<div class="crop-marker crop-marker-end" data-crop-marker="end">
 					<button class="crop-marker-line" type="button" role="slider" aria-label="Einde van het fragment" aria-valuemin="0" aria-valuenow="0" tabindex="0"></button>
-					<input class="crop-marker-time crop-marker-time-end" type="text" inputmode="decimal" autocomplete="off" placeholder="00:00.00" pattern="[0-9]{2,}:[0-5][0-9]\.[0-9]{2}" aria-label="Eindtijd in minuten, seconden en honderdsten" aria-describedby="crop-time-format" data-crop-marker-time="end" data-crop-time="end" value="00:00.00">
+					<input class="crop-marker-time crop-marker-time-end" type="text" inputmode="decimal" autocomplete="off" placeholder="00:00.00" pattern="[0-9]{2,}:[0-5][0-9]\.[0-9]{2}" aria-label="Eindtijd in minuten, seconden en honderdsten" aria-description="Gebruik MM:SS.uu, bijvoorbeeld 01:23.45." data-crop-marker-time="end" data-crop-time="end" value="00:00.00">
 				</div>
 				<div class="crop-marker crop-marker-playhead" data-crop-marker="playhead">
 					<button class="crop-marker-line" type="button" role="slider" aria-label="Afspeelpositie" aria-valuemin="0" aria-valuenow="0" tabindex="0"></button>
@@ -110,15 +82,43 @@
 				</div>
 			</div>
 		</div>
+		<div class="crop-context-menu" data-crop-context-menu role="menu" aria-label="Crop vanaf afspeelpositie" hidden>
+			<button type="button" role="menuitem" data-crop-context-action="start">Crop vanaf hier</button>
+			<button type="button" role="menuitem" data-crop-context-action="end">Crop tot hier</button>
+		</div>
 
-		<p id="crop-time-format" class="crop-time-help">Klik op een start- of eindtijd om deze direct te bewerken. Gebruik MM:SS.uu, bijvoorbeeld 01:23.45.</p>
+		<div class="crop-navigator" data-crop-navigator role="group" aria-label="Audio-navigator">
+			<canvas class="crop-navigator-waveform" data-crop-navigator-waveform aria-hidden="true"></canvas>
+			<div class="crop-navigator-shade crop-navigator-shade-start" data-crop-navigator-shade="start" aria-hidden="true"></div>
+			<div class="crop-navigator-shade crop-navigator-shade-end" data-crop-navigator-shade="end" aria-hidden="true"></div>
+			<div class="crop-navigator-marker" data-crop-navigator-marker="start" aria-hidden="true"></div>
+			<div class="crop-navigator-marker" data-crop-navigator-marker="end" aria-hidden="true"></div>
+			<div class="crop-navigator-playhead" data-crop-navigator-playhead aria-hidden="true"></div>
+			<div
+				class="crop-navigator-frame"
+				data-crop-navigator-frame
+				tabindex="0"
+				role="group"
+				aria-label="Zichtbaar audiogebied. Gebruik de pijltjestoetsen om te navigeren en plus of min om te zoomen."
+				aria-describedby="crop-navigator-help"
+			>
+				<button class="crop-navigator-handle crop-navigator-handle-start" type="button" data-crop-navigator-handle="start" aria-label="Begin van het zichtbare gebied verslepen om te zoomen"></button>
+				<button class="crop-navigator-handle crop-navigator-handle-end" type="button" data-crop-navigator-handle="end" aria-label="Einde van het zichtbare gebied verslepen om te zoomen"></button>
+			</div>
+		</div>
 
-		<p class="crop-status" data-crop-status aria-live="polite"></p>
+		<p class="crop-live-status" data-crop-status aria-live="polite"></p>
 		<div class="crop-actions">
 			<button class="secondary-button" type="button" data-crop-change>Ander bestand kiezen</button>
 			<div class="crop-export-actions">
-				<button class="secondary-button" type="button" data-crop-export-data disabled>Gecropt MP3 met gegevens</button>
-				<button class="primary-button" type="button" data-crop-export-audio disabled>Gecropt audio-only MP3</button>
+				<button class="secondary-button" type="button" data-crop-export-data disabled>
+					<i class="fas fa-download" aria-hidden="true"></i>
+					Gecropt MP3 met gegevens
+				</button>
+				<button class="primary-button" type="button" data-crop-export-audio disabled>
+					<i class="fas fa-download" aria-hidden="true"></i>
+					Gecropt audio-only MP3
+				</button>
 			</div>
 		</div>
 		<p class="upload-note">De originele audio blijft ongewijzigd. Exporteren gebeurt lokaal in je browser.</p>

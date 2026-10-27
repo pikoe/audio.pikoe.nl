@@ -886,8 +886,6 @@ function initializeMp3CropTool() {
 	const audio = editor.querySelector('[data-crop-audio]');
 	const playButton = editor.querySelector('[data-crop-play]');
 	const modeButtons = [...editor.querySelectorAll('[data-crop-mode]')];
-	const zoomInput = editor.querySelector('[data-crop-zoom]');
-	const zoomValue = editor.querySelector('[data-crop-zoom-value]');
 	const navigator = editor.querySelector('[data-crop-navigator]');
 	const navigatorWaveform = editor.querySelector('[data-crop-navigator-waveform]');
 	const navigatorPlayhead = editor.querySelector('[data-crop-navigator-playhead]');
@@ -896,6 +894,7 @@ function initializeMp3CropTool() {
 	const ruler = editor.querySelector('[data-crop-ruler]');
 	const waveViewport = editor.querySelector('[data-crop-wave-viewport]');
 	const track = editor.querySelector('[data-crop-track]');
+	const cropContextMenu = editor.querySelector('[data-crop-context-menu]');
 	const status = editor.querySelector('[data-crop-status]');
 	const changeButton = editor.querySelector('[data-crop-change]');
 	const dataExportButton = editor.querySelector('[data-crop-export-data]');
@@ -911,8 +910,6 @@ function initializeMp3CropTool() {
 		|| !(audio instanceof HTMLAudioElement)
 		|| !(playButton instanceof HTMLButtonElement)
 		|| !modeButtons.every((button) => button instanceof HTMLButtonElement)
-		|| !(zoomInput instanceof HTMLInputElement)
-		|| !(zoomValue instanceof HTMLOutputElement)
 		|| !(navigator instanceof HTMLElement)
 		|| !(navigatorWaveform instanceof HTMLCanvasElement)
 		|| !(navigatorPlayhead instanceof HTMLElement)
@@ -921,6 +918,7 @@ function initializeMp3CropTool() {
 		|| !(ruler instanceof HTMLElement)
 		|| !(waveViewport instanceof HTMLElement)
 		|| !(track instanceof HTMLElement)
+		|| !(cropContextMenu instanceof HTMLElement)
 		|| !(status instanceof HTMLElement)
 		|| !(changeButton instanceof HTMLButtonElement)
 		|| !(dataExportButton instanceof HTMLButtonElement)
@@ -956,7 +954,12 @@ function initializeMp3CropTool() {
 	let markerDrag = null;
 	let navigatorDrag = null;
 	let activeMarkerName = null;
+	let cropContextMenuTime = 0;
 	const waveformInset = 5;
+	const minZoom = 1;
+	const maxZoom = 20;
+
+	document.body.append(cropContextMenu);
 
 	const getWaveformWidth = (width = track.clientWidth) => Math.max(1, width - (waveformInset * 2));
 	const timeToTrackX = (time, width = track.clientWidth) => (
@@ -1269,8 +1272,6 @@ function initializeMp3CropTool() {
 			? timeToTrackX(centerTime, trackWidth) - waveViewport.clientWidth / 2
 			: 0;
 		ruler.style.transform = `translateX(-${waveViewport.scrollLeft}px)`;
-		const actualZoom = trackWidth / waveViewport.clientWidth;
-		zoomValue.value = `${actualZoom.toFixed(actualZoom < 10 ? 1 : 0).replace(/\.0$/, '')}×`;
 		drawNavigatorWaveform();
 		updateNavigator();
 		updateTimeline();
@@ -1279,6 +1280,40 @@ function initializeMp3CropTool() {
 	const getTimeFromClientX = (clientX) => {
 		const bounds = track.getBoundingClientRect();
 		return duration > 0 ? trackXToTime(clientX - bounds.left, bounds.width) : 0;
+	};
+
+	const closeCropContextMenu = () => {
+		cropContextMenu.hidden = true;
+	};
+
+	const openCropContextMenu = (event) => {
+		if (!selectedFile || !decodedAudio || duration <= 0) {
+			return;
+		}
+		event.preventDefault();
+		cropContextMenuTime = getTimeFromClientX(event.clientX);
+		cropContextMenu.hidden = false;
+		const bounds = cropContextMenu.getBoundingClientRect();
+		cropContextMenu.style.left = `${Math.max(0, Math.min(event.clientX, window.innerWidth - bounds.width))}px`;
+		cropContextMenu.style.top = `${Math.max(0, Math.min(event.clientY, window.innerHeight - bounds.height))}px`;
+		cropContextMenu.querySelector('button')?.focus({ preventScroll: true });
+	};
+
+	const applyCropContextAction = (action) => {
+		if (action === 'start') {
+			if (cropContextMenuTime >= cropEnd) {
+				cropEnd = duration;
+			}
+			cropStart = Math.max(0, Math.min(cropContextMenuTime, cropEnd - 0.01));
+		} else {
+			if (cropContextMenuTime <= cropStart) {
+				cropStart = 0;
+			}
+			cropEnd = Math.min(duration, Math.max(cropStart + 0.01, cropContextMenuTime));
+		}
+		drawWaveforms(track.clientWidth);
+		drawNavigatorWaveform();
+		updateTimeline();
 	};
 
 	const snapTime = (time, references) => {
@@ -1514,7 +1549,6 @@ function initializeMp3CropTool() {
 			cropEnd = duration;
 			playhead = 0;
 			zoom = 1;
-			zoomInput.value = '1';
 			channelPeaks = Array.from(
 				{ length: Math.min(2, decodedAudio.numberOfChannels) },
 				(_, index) => createPeaks(decodedAudio, index),
@@ -1637,14 +1671,10 @@ function initializeMp3CropTool() {
 		});
 	});
 
-	zoomInput.addEventListener('input', () => {
-		zoom = Math.max(1, Number(zoomInput.value) || 1);
-		updateLayout();
-	});
 	const resizeNavigatorFrame = (edge, initialLeft, initialWidth, delta) => {
 		let left = initialLeft;
 		let width = initialWidth;
-		const minWidth = 1 / Number(zoomInput.max);
+		const minWidth = 1 / maxZoom;
 		if (edge === 'start') {
 			const right = left + width;
 			left = Math.max(0, Math.min(right - minWidth, left + delta));
@@ -1653,8 +1683,7 @@ function initializeMp3CropTool() {
 			const right = Math.max(left + minWidth, Math.min(1, left + width + delta));
 			width = right - left;
 		}
-		zoom = Math.max(Number(zoomInput.min), Math.min(Number(zoomInput.max), 1 / width));
-		zoomInput.value = String(zoom);
+		zoom = Math.max(minZoom, Math.min(maxZoom, 1 / width));
 		updateLayout(false);
 		waveViewport.scrollLeft = left * getWaveformWidth();
 	};
@@ -1732,13 +1761,11 @@ function initializeMp3CropTool() {
 			waveViewport.scrollLeft = event.key === 'Home' ? 0 : track.scrollWidth;
 		} else if (event.key === '+' || event.key === '=') {
 			event.preventDefault();
-			zoom = Math.min(Number(zoomInput.max), zoom + 0.5);
-			zoomInput.value = String(zoom);
+			zoom = Math.min(maxZoom, zoom + 0.5);
 			updateLayout();
 		} else if (event.key === '-') {
 			event.preventDefault();
-			zoom = Math.max(Number(zoomInput.min), zoom - 0.5);
-			zoomInput.value = String(zoom);
+			zoom = Math.max(minZoom, zoom - 0.5);
 			updateLayout();
 		}
 	});
@@ -1753,8 +1780,7 @@ function initializeMp3CropTool() {
 		}
 		event.preventDefault();
 		const previousZoom = zoom;
-		zoom = Math.max(1, Math.min(20, zoom + (event.deltaY < 0 ? 0.25 : -0.25)));
-		zoomInput.value = String(zoom);
+		zoom = Math.max(minZoom, Math.min(maxZoom, zoom + (event.deltaY < 0 ? 0.25 : -0.25)));
 		if (previousZoom !== zoom) {
 			updateLayout();
 		}
@@ -1762,7 +1788,62 @@ function initializeMp3CropTool() {
 	waveViewport.addEventListener('wheel', handleTimelineWheel, { passive: false });
 	rulerViewport.addEventListener('wheel', handleTimelineWheel, { passive: false });
 
+	track.addEventListener('contextmenu', openCropContextMenu);
+	cropContextMenu.addEventListener('click', (event) => {
+		if (!(event.target instanceof Element)) {
+			return;
+		}
+		const action = event.target.closest('[data-crop-context-action]')?.getAttribute('data-crop-context-action');
+		if (action !== 'start' && action !== 'end') {
+			return;
+		}
+		applyCropContextAction(action);
+		closeCropContextMenu();
+	});
+	cropContextMenu.addEventListener('keydown', (event) => {
+		if (!(event.target instanceof Element)) {
+			return;
+		}
+		const items = [...cropContextMenu.querySelectorAll('[role="menuitem"]')];
+		const currentIndex = items.indexOf(event.target.closest('[role="menuitem"]'));
+		if (currentIndex < 0) {
+			return;
+		}
+		const nextIndex = event.key === 'ArrowDown'
+			? (currentIndex + 1) % items.length
+			: event.key === 'ArrowUp'
+				? (currentIndex - 1 + items.length) % items.length
+				: event.key === 'Home'
+					? 0
+					: event.key === 'End'
+						? items.length - 1
+						: -1;
+		if (nextIndex >= 0) {
+			event.preventDefault();
+			items[nextIndex].focus();
+		}
+	});
+	document.addEventListener('click', (event) => {
+		if (!(event.target instanceof Element) || !event.target.closest('[data-crop-context-menu]')) {
+			closeCropContextMenu();
+		}
+	});
+	document.addEventListener('keydown', (event) => {
+		if (cropContextMenu.hidden) {
+			return;
+		}
+		if (event.key === 'Escape') {
+			closeCropContextMenu();
+			waveViewport.focus({ preventScroll: true });
+		} else if (event.key === 'Tab') {
+			closeCropContextMenu();
+		}
+	});
+
 	track.addEventListener('pointerdown', (event) => {
+		if (event.button !== 0) {
+			return;
+		}
 		if (event.target instanceof HTMLElement && event.target.closest('[data-crop-marker]')) {
 			return;
 		}
@@ -1775,6 +1856,9 @@ function initializeMp3CropTool() {
 			return;
 		}
 		marker.addEventListener('pointerdown', (event) => {
+			if (event.button !== 0) {
+				return;
+			}
 			activeMarkerName = markerName;
 			if (event.target instanceof HTMLElement && event.target.matches('[data-crop-time]')) {
 				updateTimeline();

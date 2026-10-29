@@ -5,7 +5,7 @@
 @section('content')
 	<section class="page-intro">
 		<h1>Discografie</h1>
-		<p>Luister naar de fragmenten en ontdek de geluiden uit onze collectie.</p>
+		<p>Luister naar de fragmenten en ontdek welke leuke thema liedjes ik heb gemaakt.</p>
 	</section>
 
 	@if ($tracks->isNotEmpty())

@@ -1369,6 +1369,22 @@ a {
 	border-top: 1px solid rgb(48 40 58 / 14%);
 }
 
+.convert-export-panel {
+	margin-right: auto;
+	margin-left: auto;
+	padding: clamp(1.25rem, 5vw, 2.5rem);
+	border-top: 0;
+}
+
+.convert-export-panel h2 {
+	margin: 0 0 1.25rem;
+	font-size: 1.3rem;
+}
+
+.convert-export-panel [data-crop-change] {
+	margin-top: 1rem;
+}
+
 .capture-export-fields {
 	display: grid;
 	grid-template-columns: minmax(10rem, 0.65fr) minmax(15rem, 1fr) auto;

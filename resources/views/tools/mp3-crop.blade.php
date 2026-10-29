@@ -32,7 +32,7 @@
 	<section class="crop-editor glass-panel" data-crop-editor aria-labelledby="crop-editor-heading" hidden>
 		<div class="crop-editor-heading">
 			<div>
-				<h2 id="crop-editor-heading">Audiofragment kiezen</h2>
+				<h2 id="crop-editor-heading">Fragment knippen</h2>
 				<p class="selected-audio" data-crop-selected-audio></p>
 			</div>
 			<div class="crop-playback-controls">

@@ -1002,6 +1002,202 @@ function loadMp3Encoder() {
 	return mp3EncoderLibraryPromise;
 }
 
+function getAudioExportFormats() {
+	const nativeFormats = [
+		{ mimeType: 'audio/webm;codecs=opus', label: 'WebM audio (Opus)', extension: 'webm' },
+		{ mimeType: 'audio/ogg;codecs=opus', label: 'OGG audio (Opus)', extension: 'ogg' },
+		{ mimeType: 'audio/mp4;codecs=mp4a.40.2', label: 'M4A audio (AAC)', extension: 'm4a' },
+		{ mimeType: 'audio/webm', label: 'WebM audio', extension: 'webm' },
+		{ mimeType: 'audio/ogg', label: 'OGG audio', extension: 'ogg' },
+		{ mimeType: 'audio/mp4', label: 'MP4 audio', extension: 'mp4' },
+		{ mimeType: 'audio/aac', label: 'AAC audio', extension: 'aac' },
+		{ mimeType: 'audio/mpeg', label: 'MP3 audio (browser)', extension: 'mp3' },
+	];
+	const supportedNativeFormats = typeof window.MediaRecorder !== 'undefined'
+		&& typeof window.MediaRecorder.isTypeSupported === 'function'
+		? nativeFormats.filter(({ mimeType }) => window.MediaRecorder.isTypeSupported(mimeType))
+		: [];
+
+	return new Map([
+		['mp3', { label: 'MP3 (aanbevolen)', extension: 'mp3', mimeType: null }],
+		['wav', { label: 'WAV', extension: 'wav', mimeType: null }],
+		...supportedNativeFormats.map((format) => [format.mimeType, format]),
+	]);
+}
+
+function encodeWav(audioBuffer) {
+	const channels = Math.min(2, audioBuffer.numberOfChannels);
+	const sampleCount = audioBuffer.length;
+	const bytesPerSample = 2;
+	const blockAlign = channels * bytesPerSample;
+	const output = new ArrayBuffer(44 + (sampleCount * blockAlign));
+	const view = new DataView(output);
+	const writeText = (offset, text) => {
+		for (let index = 0; index < text.length; index++) {
+			view.setUint8(offset + index, text.charCodeAt(index));
+		}
+	};
+	writeText(0, 'RIFF');
+	view.setUint32(4, output.byteLength - 8, true);
+	writeText(8, 'WAVE');
+	writeText(12, 'fmt ');
+	view.setUint32(16, 16, true);
+	view.setUint16(20, 1, true);
+	view.setUint16(22, channels, true);
+	view.setUint32(24, audioBuffer.sampleRate, true);
+	view.setUint32(28, audioBuffer.sampleRate * blockAlign, true);
+	view.setUint16(32, blockAlign, true);
+	view.setUint16(34, 16, true);
+	writeText(36, 'data');
+	view.setUint32(40, sampleCount * blockAlign, true);
+	const sourceChannels = Array.from({ length: channels }, (_, index) => audioBuffer.getChannelData(index));
+	let offset = 44;
+	for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+		for (const channel of sourceChannels) {
+			const sample = Math.max(-1, Math.min(1, channel[sampleIndex]));
+			view.setInt16(offset, Math.round(sample * (sample < 0 ? 32768 : 32767)), true);
+			offset += bytesPerSample;
+		}
+	}
+	return new Blob([output], { type: 'audio/wav' });
+}
+
+async function makeWav(blob) {
+	const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+	if (!AudioContextClass) {
+		throw new Error('Deze browser kan audio niet naar WAV omzetten.');
+	}
+	const decodingContext = new AudioContextClass();
+	try {
+		return encodeWav(await decodingContext.decodeAudioData(await blob.arrayBuffer()));
+	} finally {
+		await decodingContext.close();
+	}
+}
+
+async function makeMp3(blob, setStatus = () => {}) {
+	const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+	if (!AudioContextClass) {
+		throw new Error('Deze browser kan audio niet naar MP3 omzetten.');
+	}
+	setStatus('Audio wordt ingelezen voor MP3-export…');
+	const decodingContext = new AudioContextClass();
+	try {
+		const audioBuffer = await decodingContext.decodeAudioData(await blob.arrayBuffer());
+		const library = await loadMp3Encoder();
+		const supportedRates = [48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000];
+		const sampleRate = supportedRates.find((rate) => rate <= audioBuffer.sampleRate) ?? 8000;
+		const channels = Math.min(2, audioBuffer.numberOfChannels);
+		const encoder = new library.Mp3Encoder(channels, sampleRate, 192);
+		const sourceChannels = Array.from({ length: audioBuffer.numberOfChannels }, (_, index) => audioBuffer.getChannelData(index));
+		const outputSamples = Math.max(1, Math.floor(audioBuffer.duration * sampleRate));
+		const encodedChunks = [];
+		const chunkSize = 1152;
+		for (let offset = 0; offset < outputSamples; offset += chunkSize) {
+			const size = Math.min(chunkSize, outputSamples - offset);
+			const left = new Int16Array(size);
+			const right = channels === 2 ? new Int16Array(size) : null;
+			for (let index = 0; index < size; index++) {
+				const sourcePosition = ((offset + index) * audioBuffer.sampleRate) / sampleRate;
+				let leftSample = getAudioSample(sourceChannels[0], sourcePosition);
+				let rightSample = channels === 2 ? getAudioSample(sourceChannels[1], sourcePosition) : leftSample;
+				if (channels === 2 && sourceChannels.length > 2) {
+					for (let extraChannel = 2; extraChannel < sourceChannels.length; extraChannel++) {
+						const extraSample = getAudioSample(sourceChannels[extraChannel], sourcePosition) / sourceChannels.length;
+						if (extraChannel % 2 === 0) {
+							leftSample += extraSample;
+						} else {
+							rightSample += extraSample;
+						}
+					}
+				}
+				left[index] = Math.max(-32768, Math.min(32767, Math.round(leftSample * (leftSample < 0 ? 32768 : 32767))));
+				if (right && rightSample !== undefined) {
+					right[index] = Math.max(-32768, Math.min(32767, Math.round(rightSample * (rightSample < 0 ? 32768 : 32767))));
+				}
+			}
+			const chunk = right ? encoder.encodeBuffer(left, right) : encoder.encodeBuffer(left);
+			if (chunk.length) {
+				encodedChunks.push(chunk);
+			}
+			if (offset % (chunkSize * 40) === 0) {
+				setStatus(`MP3 maken… ${Math.min(100, Math.round(((offset + size) / outputSamples) * 100))}%`);
+				await new Promise((resolve) => window.setTimeout(resolve, 0));
+			}
+		}
+		const finalChunk = encoder.flush();
+		if (finalChunk.length) {
+			encodedChunks.push(finalChunk);
+		}
+		return new Blob(encodedChunks, { type: 'audio/mpeg' });
+	} finally {
+		await decodingContext.close();
+	}
+}
+
+function getAudioSample(samples, position) {
+	const left = Math.max(0, Math.min(samples.length - 1, Math.floor(position)));
+	const right = Math.min(samples.length - 1, left + 1);
+	const fraction = Math.max(0, position - left);
+	return samples[left] * (1 - fraction) + samples[right] * fraction;
+}
+
+async function makeNativeAudio(blob, format, setStatus = () => {}) {
+	if (typeof window.MediaRecorder === 'undefined' || !format.mimeType) {
+		throw new Error('Dit bestandsformaat wordt niet ondersteund door deze browser.');
+	}
+	const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+	if (!AudioContextClass) {
+		throw new Error('Deze browser kan audio niet verwerken.');
+	}
+
+	setStatus(`${format.label} wordt gemaakt…`);
+	const audioContext = new AudioContextClass();
+	let source = null;
+	let recorder = null;
+	let destination = null;
+	try {
+		const audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+		await audioContext.resume();
+		destination = audioContext.createMediaStreamDestination();
+		source = audioContext.createBufferSource();
+		source.buffer = audioBuffer;
+		source.connect(destination);
+		recorder = new window.MediaRecorder(destination.stream, {
+			mimeType: format.mimeType,
+			audioBitsPerSecond: 256000,
+		});
+
+		return await new Promise((resolve, reject) => {
+			const chunks = [];
+			recorder.addEventListener('dataavailable', (event) => {
+				if (event.data.size) {
+					chunks.push(event.data);
+				}
+			});
+			recorder.addEventListener('error', (event) => {
+				reject(event.error ?? new Error(`${format.label} kon niet worden gemaakt.`));
+			}, { once: true });
+			recorder.addEventListener('stop', () => {
+				resolve(new Blob(chunks, { type: recorder.mimeType || format.mimeType }));
+			}, { once: true });
+			source.addEventListener('ended', () => {
+				if (recorder.state === 'recording') {
+					recorder.stop();
+				}
+			}, { once: true });
+			recorder.start();
+			source.start();
+		});
+	} finally {
+		if (recorder?.state === 'recording') {
+			recorder.stop();
+		}
+		destination?.stream.getTracks().forEach((track) => track.stop());
+		await audioContext.close();
+	}
+}
+
 function initializeMp3CropTool() {
 	const uploadPanel = document.querySelector('[data-mp3-crop-upload]');
 	const editor = document.querySelector('[data-crop-editor]');
@@ -2137,6 +2333,123 @@ function initializeMp3CropTool() {
 	}
 }
 
+function initializeAudioConverter() {
+	const converter = document.querySelector('[data-audio-converter]');
+	if (!(converter instanceof HTMLElement)) {
+		return;
+	}
+
+	const fileInput = converter.querySelector('[data-file-input]');
+	const uploadPanel = converter.querySelector('.upload-panel');
+	const exportSection = converter.querySelector('[data-convert-export]');
+	const formatSelect = converter.querySelector('[data-convert-format]');
+	const filenameInput = converter.querySelector('[data-convert-filename]');
+	const exportButton = converter.querySelector('[data-convert-export-button]');
+	const changeFileButton = converter.querySelector('[data-crop-change]');
+	const fileStatus = converter.querySelector('[data-file-status]');
+	const status = converter.querySelector('[data-convert-status]');
+	if (
+		!(fileInput instanceof HTMLInputElement)
+		|| !(uploadPanel instanceof HTMLElement)
+		|| !(exportSection instanceof HTMLElement)
+		|| !(formatSelect instanceof HTMLSelectElement)
+		|| !(filenameInput instanceof HTMLInputElement)
+		|| !(exportButton instanceof HTMLButtonElement)
+		|| !(changeFileButton instanceof HTMLButtonElement)
+		|| !(fileStatus instanceof HTMLElement)
+		|| !(status instanceof HTMLElement)
+	) {
+		return;
+	}
+
+	const formatOptions = getAudioExportFormats();
+	formatOptions.forEach((format, value) => {
+		if (![...formatSelect.options].some((option) => option.value === value)) {
+			formatSelect.add(new Option(format.label, value));
+		}
+	});
+	formatSelect.value = 'mp3';
+
+	let selectedFile = null;
+	const updateFile = (file) => {
+		selectedFile = file;
+		uploadPanel.hidden = Boolean(file);
+		exportSection.hidden = !file;
+		exportButton.disabled = !file;
+		if (file) {
+			filenameInput.value = file.name.replace(/\.[^.]+$/, '');
+			fileStatus.textContent = `Geselecteerd: ${file.name}`;
+			status.textContent = 'Kies een bestandsformaat en download de conversie.';
+		} else {
+			filenameInput.value = '';
+			formatSelect.value = 'mp3';
+			fileStatus.textContent = 'Nog geen bestand gekozen.';
+			status.textContent = 'Kies een audiobestand om te converteren.';
+		}
+	};
+
+	fileInput.addEventListener('change', () => updateFile(fileInput.files?.[0] ?? null));
+	changeFileButton.addEventListener('click', () => {
+		fileInput.value = '';
+		fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+	});
+
+	const downloadBlob = (blob, format) => {
+		const extensionPattern = new RegExp(`\\.${format.extension}$`, 'i');
+		const baseName = filenameInput.value
+			.trim()
+			.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+			.replace(/[. ]+$/g, '')
+			.replace(extensionPattern, '')
+			|| 'audio';
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = `${baseName}.${format.extension}`;
+		document.body.append(link);
+		link.click();
+		link.remove();
+		window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+	};
+
+	exportButton.addEventListener('click', async () => {
+		if (!selectedFile) {
+			return;
+		}
+		const format = formatOptions.get(formatSelect.value);
+		if (!format) {
+			status.textContent = 'Kies een ondersteund bestandsformaat.';
+			return;
+		}
+
+		exportButton.disabled = true;
+		fileInput.disabled = true;
+		changeFileButton.disabled = true;
+		const setStatus = (message) => {
+			status.textContent = message;
+		};
+		try {
+			let output;
+			if (formatSelect.value === 'mp3') {
+				output = await makeMp3(selectedFile, setStatus);
+			} else if (formatSelect.value === 'wav') {
+				setStatus('WAV-bestand wordt gemaakt…');
+				output = await makeWav(selectedFile);
+			} else {
+				output = await makeNativeAudio(selectedFile, format, setStatus);
+			}
+			downloadBlob(output, format);
+			setStatus(`${format.label} is aangemaakt en gedownload.`);
+		} catch (error) {
+			setStatus(error instanceof Error ? error.message : 'Het audiobestand kon niet worden geconverteerd.');
+		} finally {
+			fileInput.disabled = false;
+			changeFileButton.disabled = false;
+			exportButton.disabled = !selectedFile;
+		}
+	});
+}
+
 function initializeCaptureAudioTool() {
 	const editor = document.querySelector('[data-capture-audio]');
 	if (!(editor instanceof HTMLElement)) {
@@ -2218,24 +2531,8 @@ function initializeCaptureAudioTool() {
 	const sampleRateForPeaks = 20;
 	const minimumZoom = 0.1;
 	const maximumZoom = 10;
-	const nativeFormats = [
-		{ mimeType: 'audio/webm;codecs=opus', label: 'WebM audio (Opus)', extension: 'webm' },
-		{ mimeType: 'audio/ogg;codecs=opus', label: 'OGG audio (Opus)', extension: 'ogg' },
-		{ mimeType: 'audio/mp4;codecs=mp4a.40.2', label: 'M4A audio (AAC)', extension: 'm4a' },
-		{ mimeType: 'audio/webm', label: 'WebM audio', extension: 'webm' },
-		{ mimeType: 'audio/ogg', label: 'OGG audio', extension: 'ogg' },
-		{ mimeType: 'audio/mp4', label: 'MP4 audio', extension: 'mp4' },
-		{ mimeType: 'audio/aac', label: 'AAC audio', extension: 'aac' },
-		{ mimeType: 'audio/mpeg', label: 'MP3 audio (browser)', extension: 'mp3' },
-	];
-	const supportedNativeFormats = mediaRecorderSupported && typeof MediaRecorder.isTypeSupported === 'function'
-		? nativeFormats.filter(({ mimeType }) => MediaRecorder.isTypeSupported(mimeType))
-		: [];
-	const formatOptions = new Map([
-		['mp3', { label: 'MP3 (aanbevolen)', extension: 'mp3', mimeType: null }],
-		['wav', { label: 'WAV', extension: 'wav', mimeType: null }],
-		...supportedNativeFormats.map((format) => [format.mimeType, format]),
-	]);
+	const formatOptions = getAudioExportFormats();
+	const supportedNativeFormats = [...formatOptions.values()].filter(({ mimeType }) => mimeType);
 
 	let captureStream = null;
 	let recorder = null;
@@ -2592,109 +2889,6 @@ function initializeCaptureAudioTool() {
 		recordingToggle.disabled = true;
 		setStatus('Opname wordt afgerond…');
 		recorder.stop();
-	};
-
-	const makeWav = (audioBuffer) => {
-		const channels = Math.min(2, audioBuffer.numberOfChannels);
-		const sampleCount = audioBuffer.length;
-		const bytesPerSample = 2;
-		const blockAlign = channels * bytesPerSample;
-		const output = new ArrayBuffer(44 + (sampleCount * blockAlign));
-		const view = new DataView(output);
-		const writeText = (offset, text) => {
-			for (let index = 0; index < text.length; index++) {
-				view.setUint8(offset + index, text.charCodeAt(index));
-			}
-		};
-		writeText(0, 'RIFF');
-		view.setUint32(4, output.byteLength - 8, true);
-		writeText(8, 'WAVE');
-		writeText(12, 'fmt ');
-		view.setUint32(16, 16, true);
-		view.setUint16(20, 1, true);
-		view.setUint16(22, channels, true);
-		view.setUint32(24, audioBuffer.sampleRate, true);
-		view.setUint32(28, audioBuffer.sampleRate * blockAlign, true);
-		view.setUint16(32, blockAlign, true);
-		view.setUint16(34, 16, true);
-		writeText(36, 'data');
-		view.setUint32(40, sampleCount * blockAlign, true);
-		const sourceChannels = Array.from({ length: channels }, (_, index) => audioBuffer.getChannelData(index));
-		let offset = 44;
-		for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
-			for (const channel of sourceChannels) {
-				const sample = Math.max(-1, Math.min(1, channel[sampleIndex]));
-				view.setInt16(offset, Math.round(sample * (sample < 0 ? 32768 : 32767)), true);
-				offset += bytesPerSample;
-			}
-		}
-		return new Blob([output], { type: 'audio/wav' });
-	};
-
-	const getSample = (samples, position) => {
-		const left = Math.max(0, Math.min(samples.length - 1, Math.floor(position)));
-		const right = Math.min(samples.length - 1, left + 1);
-		const fraction = Math.max(0, position - left);
-		return samples[left] * (1 - fraction) + samples[right] * fraction;
-	};
-
-	const makeMp3 = async (blob) => {
-		if (!AudioContextClass) {
-			throw new Error('Deze browser kan audio niet naar MP3 omzetten.');
-		}
-		setStatus('Audio wordt ingelezen voor MP3-export…');
-		const decodingContext = new AudioContextClass();
-		try {
-			const audioBuffer = await decodingContext.decodeAudioData(await blob.arrayBuffer());
-			const library = await loadMp3Encoder();
-			const supportedRates = [48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000];
-			const sampleRate = supportedRates.find((rate) => rate <= audioBuffer.sampleRate) ?? 8000;
-			const channels = Math.min(2, audioBuffer.numberOfChannels);
-			const encoder = new library.Mp3Encoder(channels, sampleRate, 192);
-			const sourceChannels = Array.from({ length: audioBuffer.numberOfChannels }, (_, index) => audioBuffer.getChannelData(index));
-			const outputSamples = Math.max(1, Math.floor(audioBuffer.duration * sampleRate));
-			const encodedChunks = [];
-			const chunkSize = 1152;
-			for (let offset = 0; offset < outputSamples; offset += chunkSize) {
-				const size = Math.min(chunkSize, outputSamples - offset);
-				const left = new Int16Array(size);
-				const right = channels === 2 ? new Int16Array(size) : null;
-				for (let index = 0; index < size; index++) {
-					const sourcePosition = ((offset + index) * audioBuffer.sampleRate) / sampleRate;
-					let leftSample = getSample(sourceChannels[0], sourcePosition);
-					let rightSample = channels === 2 ? getSample(sourceChannels[1], sourcePosition) : leftSample;
-					if (channels === 2 && sourceChannels.length > 2) {
-						for (let extraChannel = 2; extraChannel < sourceChannels.length; extraChannel++) {
-							const extraSample = getSample(sourceChannels[extraChannel], sourcePosition) / sourceChannels.length;
-							if (extraChannel % 2 === 0) {
-								leftSample += extraSample;
-							} else {
-								rightSample += extraSample;
-							}
-						}
-					}
-					left[index] = Math.max(-32768, Math.min(32767, Math.round(leftSample * (leftSample < 0 ? 32768 : 32767))));
-					if (right && rightSample !== undefined) {
-						right[index] = Math.max(-32768, Math.min(32767, Math.round(rightSample * (rightSample < 0 ? 32768 : 32767))));
-					}
-				}
-				const chunk = right ? encoder.encodeBuffer(left, right) : encoder.encodeBuffer(left);
-				if (chunk.length) {
-					encodedChunks.push(chunk);
-				}
-				if (offset % (chunkSize * 40) === 0) {
-					setStatus(`MP3 maken… ${Math.min(100, Math.round(((offset + size) / outputSamples) * 100))}%`);
-					await new Promise((resolve) => window.setTimeout(resolve, 0));
-				}
-			}
-			const finalChunk = encoder.flush();
-			if (finalChunk.length) {
-				encodedChunks.push(finalChunk);
-			}
-			return new Blob(encodedChunks, { type: 'audio/mpeg' });
-		} finally {
-			await decodingContext.close();
-		}
 	};
 
 	const downloadBlob = (blob, format) => {
@@ -3152,18 +3346,9 @@ function initializeCaptureAudioTool() {
 		try {
 			let output = recordedBlob;
 			if (formatSelect.value === 'mp3') {
-				output = await makeMp3(recordedBlob);
+				output = await makeMp3(recordedBlob, setStatus);
 			} else if (formatSelect.value === 'wav') {
-				if (!AudioContextClass) {
-					throw new Error('Deze browser kan audio niet naar WAV omzetten.');
-				}
-				setStatus('WAV-bestand wordt gemaakt…');
-				const decodingContext = new AudioContextClass();
-				try {
-					output = makeWav(await decodingContext.decodeAudioData(await recordedBlob.arrayBuffer()));
-				} finally {
-					await decodingContext.close();
-				}
+				output = await makeWav(recordedBlob);
 			}
 			downloadBlob(output, format);
 			setStatus(`${format.label} is aangemaakt en gedownload.`);
@@ -3306,6 +3491,7 @@ document.addEventListener('DOMContentLoaded', () => {
 	initializeMp3LabelTool();
 	initializeDiscography();
 	initializeMp3CropTool();
+	initializeAudioConverter();
 	initializeCaptureAudioTool();
 
 	const menuToggle = document.querySelector('.menu-toggle');
@@ -3357,6 +3543,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 			input.files = files;
 			updateStatus(files[0]);
+			input.dispatchEvent(new Event('change', { bubbles: true }));
 		});
 	});
 });

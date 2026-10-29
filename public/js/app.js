@@ -2137,10 +2137,1176 @@ function initializeMp3CropTool() {
 	}
 }
 
+function initializeCaptureAudioTool() {
+	const editor = document.querySelector('[data-capture-audio]');
+	if (!(editor instanceof HTMLElement)) {
+		return;
+	}
+
+	const sourceSelect = editor.querySelector('[data-capture-source]');
+	const deviceList = editor.querySelector('[data-capture-device-list]');
+	const sourceButtons = [...editor.querySelectorAll('[data-capture-source-choice]')];
+	const recordingToggle = editor.querySelector('[data-capture-toggle]');
+	const settingsButton = editor.querySelector('[data-capture-settings-open]');
+	const settingsModal = editor.querySelector('[data-capture-settings-modal]');
+	const settingsCloseButton = editor.querySelector('[data-capture-settings-close]');
+	const status = editor.querySelector('[data-capture-status]');
+	const timeDisplay = editor.querySelector('[data-capture-time]');
+	const waveViewport = editor.querySelector('[data-capture-wave-viewport]');
+	const track = editor.querySelector('[data-capture-track]');
+	const waveform = editor.querySelector('[data-capture-waveform]');
+	const playhead = editor.querySelector('[data-capture-playhead]');
+	const ruler = editor.querySelector('[data-capture-ruler]');
+	const captureNavigator = editor.querySelector('[data-capture-navigator]');
+	const navigatorWaveform = editor.querySelector('[data-capture-navigator-waveform]');
+	const navigatorFrame = editor.querySelector('[data-capture-frame]');
+	const startShade = editor.querySelector('[data-capture-shade="start"]');
+	const endShade = editor.querySelector('[data-capture-shade="end"]');
+	const endMarker = editor.querySelector('[data-capture-end-marker]');
+	const navigatorEndMarker = editor.querySelector('[data-capture-navigator-end-marker]');
+	const navigatorPlayhead = editor.querySelector('[data-capture-navigator-playhead]');
+	const playButton = editor.querySelector('[data-capture-play]');
+	const formatSelect = editor.querySelector('[data-capture-format]');
+	const filenameInput = editor.querySelector('[data-capture-filename]');
+	const exportSection = editor.querySelector('[data-capture-export]');
+	const exportButton = editor.querySelector('[data-capture-export-button]');
+	const preview = editor.querySelector('[data-capture-preview]');
+
+	if (
+		!(sourceSelect instanceof HTMLSelectElement)
+		|| !(deviceList instanceof HTMLUListElement)
+		|| sourceButtons.length !== 2
+		|| !sourceButtons.every((button) => button instanceof HTMLButtonElement)
+		|| !(recordingToggle instanceof HTMLButtonElement)
+		|| !(settingsButton instanceof HTMLButtonElement)
+		|| !(settingsModal instanceof HTMLElement)
+		|| !(settingsCloseButton instanceof HTMLButtonElement)
+		|| !(status instanceof HTMLElement)
+		|| !(timeDisplay instanceof HTMLElement)
+		|| !(waveViewport instanceof HTMLElement)
+		|| !(track instanceof HTMLElement)
+		|| !(waveform instanceof HTMLCanvasElement)
+		|| !(playhead instanceof HTMLElement)
+		|| !(ruler instanceof HTMLElement)
+		|| !(captureNavigator instanceof HTMLElement)
+		|| !(navigatorWaveform instanceof HTMLCanvasElement)
+		|| !(navigatorFrame instanceof HTMLElement)
+		|| !(startShade instanceof HTMLElement)
+		|| !(endShade instanceof HTMLElement)
+		|| !(endMarker instanceof HTMLElement)
+		|| !(navigatorEndMarker instanceof HTMLElement)
+		|| !(navigatorPlayhead instanceof HTMLButtonElement)
+		|| !(playButton instanceof HTMLButtonElement)
+		|| !(formatSelect instanceof HTMLSelectElement)
+		|| !(filenameInput instanceof HTMLInputElement)
+		|| !(exportSection instanceof HTMLElement)
+		|| !(exportButton instanceof HTMLButtonElement)
+		|| !(preview instanceof HTMLAudioElement)
+	) {
+		return;
+	}
+
+	const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+	const mediaRecorderSupported = typeof window.MediaRecorder !== 'undefined';
+	const audioCaptureConstraints = {
+		channelCount: { ideal: 2 },
+		sampleRate: { ideal: 48000 },
+		echoCancellation: { ideal: false },
+		noiseSuppression: { ideal: false },
+		autoGainControl: { ideal: false },
+	};
+	const sampleRateForPeaks = 20;
+	const minimumZoom = 0.1;
+	const maximumZoom = 10;
+	const nativeFormats = [
+		{ mimeType: 'audio/webm;codecs=opus', label: 'WebM audio (Opus)', extension: 'webm' },
+		{ mimeType: 'audio/ogg;codecs=opus', label: 'OGG audio (Opus)', extension: 'ogg' },
+		{ mimeType: 'audio/mp4;codecs=mp4a.40.2', label: 'M4A audio (AAC)', extension: 'm4a' },
+		{ mimeType: 'audio/webm', label: 'WebM audio', extension: 'webm' },
+		{ mimeType: 'audio/ogg', label: 'OGG audio', extension: 'ogg' },
+		{ mimeType: 'audio/mp4', label: 'MP4 audio', extension: 'mp4' },
+		{ mimeType: 'audio/aac', label: 'AAC audio', extension: 'aac' },
+		{ mimeType: 'audio/mpeg', label: 'MP3 audio (browser)', extension: 'mp3' },
+	];
+	const supportedNativeFormats = mediaRecorderSupported && typeof MediaRecorder.isTypeSupported === 'function'
+		? nativeFormats.filter(({ mimeType }) => MediaRecorder.isTypeSupported(mimeType))
+		: [];
+	const formatOptions = new Map([
+		['mp3', { label: 'MP3 (aanbevolen)', extension: 'mp3', mimeType: null }],
+		['wav', { label: 'WAV', extension: 'wav', mimeType: null }],
+		...supportedNativeFormats.map((format) => [format.mimeType, format]),
+	]);
+
+	let captureStream = null;
+	let recorder = null;
+	let recordedChunks = [];
+	let audioContext = null;
+	let analyser = null;
+	let analyserData = null;
+	let animationFrame = null;
+	let recordedBlob = null;
+	let objectUrl = null;
+	let startTime = 0;
+	let elapsed = 0;
+	let zoom = 1;
+	let peaks = [];
+	let autoFollow = true;
+	let isRecording = false;
+	let isStarting = false;
+	let isRequestingDevices = false;
+	let isPlaying = false;
+	let playheadTime = 0;
+	let filenameCustomized = false;
+	let navigatorDrag = null;
+	let playheadDrag = null;
+	let playbackFrame = null;
+	let sourceSelectionId = 0;
+	let renderCount = 0;
+	let stopStatus = 'De opname is gestopt.';
+	let selectedDeviceId = '';
+	let previousBodyOverflow = '';
+
+	const setStatus = (message, isError = false) => {
+		status.textContent = message;
+		status.classList.toggle('is-error', isError);
+		status.classList.toggle('is-recording', isRecording);
+	};
+
+	const formatClock = (seconds) => {
+		const totalSeconds = Math.max(0, Math.floor(seconds));
+		const hours = Math.floor(totalSeconds / 3600);
+		const minutes = Math.floor((totalSeconds % 3600) / 60);
+		const remainingSeconds = totalSeconds % 60;
+		if (hours > 0) {
+			return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+		}
+		return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+	};
+
+	const formatFilenameTimestamp = (date) => {
+		const pad = (value) => String(value).padStart(2, '0');
+		return `${date.getFullYear()}-${pad(date.getDate())}-${pad(date.getMonth() + 1)} ${pad(date.getHours())}-${pad(date.getMinutes())} opname`;
+	};
+
+	const visibleDuration = () => 60 / zoom;
+	const timelineDuration = () => Math.max(visibleDuration(), elapsed);
+	const pixelsPerSecond = () => waveViewport.clientWidth / visibleDuration();
+	const trackWidth = () => Math.max(waveViewport.clientWidth, Math.ceil(elapsed * pixelsPerSecond()));
+
+	const formatRulerTime = (seconds) => {
+		const totalSeconds = Math.floor(seconds);
+		if (totalSeconds >= 3600) {
+			return formatClock(totalSeconds);
+		}
+		const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+		const remainingSeconds = (totalSeconds % 60).toString().padStart(2, '0');
+		return `${minutes}:${remainingSeconds}`;
+	};
+
+	const drawRuler = (width) => {
+		const pps = pixelsPerSecond();
+		const candidates = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
+		let step = candidates.find((candidate) => candidate * pps >= 70) ?? 3600;
+		const total = timelineDuration();
+		while (total / step > 1500) {
+			step *= 2;
+		}
+		const fragment = document.createDocumentFragment();
+		for (let seconds = 0; seconds <= total; seconds += step) {
+			const tick = document.createElement('span');
+			tick.className = 'crop-ruler-tick';
+			tick.style.left = `${Math.round(seconds * pps)}px`;
+			tick.textContent = formatRulerTime(seconds);
+			fragment.append(tick);
+		}
+		ruler.replaceChildren(fragment);
+		ruler.style.width = `${width}px`;
+	};
+
+	const updatePlaybackCursor = () => {
+		const duration = Math.max(elapsed, Number.isFinite(preview.duration) ? preview.duration : 0);
+		const boundedTime = Math.max(0, Math.min(duration, playheadTime));
+		playheadTime = boundedTime;
+		playhead.style.left = `${boundedTime * pixelsPerSecond()}px`;
+		navigatorPlayhead.style.left = `${duration > 0 ? (boundedTime / timelineDuration()) * 100 : 0}%`;
+		playhead.setAttribute('aria-valuemax', String(duration));
+		playhead.setAttribute('aria-valuenow', String(boundedTime));
+		playhead.setAttribute('aria-valuetext', formatClock(boundedTime));
+	};
+
+	const drawWaveform = () => {
+		const bounds = waveViewport.getBoundingClientRect();
+		if (bounds.width <= 0 || bounds.height <= 0) {
+			return;
+		}
+		const pixelRatio = window.devicePixelRatio || 1;
+		const width = Math.max(1, Math.round(bounds.width * pixelRatio));
+		const height = Math.max(1, Math.round(bounds.height * pixelRatio));
+		if (waveform.width !== width || waveform.height !== height) {
+			waveform.width = width;
+			waveform.height = height;
+		}
+		waveform.style.width = `${bounds.width}px`;
+		waveform.style.left = `${waveViewport.scrollLeft}px`;
+		endMarker.style.left = `${elapsed * pixelsPerSecond()}px`;
+		endMarker.hidden = elapsed <= 0;
+		const context = waveform.getContext('2d');
+		if (!context) {
+			return;
+		}
+		context.clearRect(0, 0, width, height);
+		const center = height / 2;
+		const pps = pixelsPerSecond();
+		for (let x = 0; x < bounds.width; x++) {
+			const time = (waveViewport.scrollLeft + x) / pps;
+			const start = Math.floor(time * sampleRateForPeaks);
+			const end = Math.max(start + 1, Math.ceil(((waveViewport.scrollLeft + x + 1) / pps) * sampleRateForPeaks));
+			let peak = 0;
+			for (let index = start; index < Math.min(end, peaks.length); index++) {
+				peak = Math.max(peak, peaks[index]);
+			}
+			const amplitude = Math.max(pixelRatio, peak * center * 1.8);
+			context.fillStyle = '#1f9187';
+			context.fillRect(x * pixelRatio, center - amplitude, pixelRatio, amplitude * 2);
+		}
+		updatePlaybackCursor();
+		playhead.style.left = `${Math.min(trackWidth(), elapsed * pps)}px`;
+	};
+
+	const drawNavigatorWaveform = () => {
+		const bounds = navigatorWaveform.getBoundingClientRect();
+		if (bounds.width <= 0 || bounds.height <= 0) {
+			return;
+		}
+		const pixelRatio = window.devicePixelRatio || 1;
+		const width = Math.max(1, Math.round(bounds.width * pixelRatio));
+		const height = Math.max(1, Math.round(bounds.height * pixelRatio));
+		if (navigatorWaveform.width !== width || navigatorWaveform.height !== height) {
+			navigatorWaveform.width = width;
+			navigatorWaveform.height = height;
+		}
+		const context = navigatorWaveform.getContext('2d');
+		if (!context) {
+			return;
+		}
+		context.clearRect(0, 0, width, height);
+		const total = timelineDuration();
+		const center = height / 2;
+		for (let x = 0; x < width; x++) {
+			const start = Math.floor((x / width) * total * sampleRateForPeaks);
+			const end = Math.max(start + 1, Math.ceil(((x + 1) / width) * total * sampleRateForPeaks));
+			let peak = 0;
+			for (let index = start; index < Math.min(end, peaks.length); index++) {
+				peak = Math.max(peak, peaks[index]);
+			}
+			const amplitude = Math.max(1, peak * center * 1.8);
+			context.fillStyle = '#1f9187';
+			context.fillRect(x, center - amplitude, 1, amplitude * 2);
+		}
+	};
+
+	const updateNavigator = () => {
+		const total = timelineDuration();
+		const fullWidth = Math.max(1, trackWidth());
+		const frameWidth = Math.min(1, visibleDuration() / total);
+		const frameLeft = Math.max(0, Math.min(1 - frameWidth, waveViewport.scrollLeft / fullWidth));
+		navigatorFrame.style.left = `${frameLeft * 100}%`;
+		navigatorFrame.style.width = `${frameWidth * 100}%`;
+		navigatorEndMarker.style.left = `${(elapsed / total) * 100}%`;
+		navigatorEndMarker.hidden = elapsed <= 0;
+		startShade.style.width = `${frameLeft * 100}%`;
+		endShade.style.left = `${(frameLeft + frameWidth) * 100}%`;
+		endShade.style.width = `${(1 - frameLeft - frameWidth) * 100}%`;
+	};
+
+	const updateLayout = (preserveCenter = true, followLiveEdge = false) => {
+		if (waveViewport.clientWidth <= 0) {
+			return;
+		}
+		const oldPps = pixelsPerSecond();
+		const centerTime = (waveViewport.scrollLeft + (waveViewport.clientWidth / 2)) / oldPps;
+		const width = trackWidth();
+		track.style.width = `${width}px`;
+		drawRuler(width);
+		if (isRecording && followLiveEdge && autoFollow) {
+			waveViewport.scrollLeft = Math.max(0, width - waveViewport.clientWidth);
+		} else if (preserveCenter) {
+			waveViewport.scrollLeft = Math.max(0, (centerTime * pixelsPerSecond()) - (waveViewport.clientWidth / 2));
+		}
+		ruler.style.transform = `translateX(-${waveViewport.scrollLeft}px)`;
+		drawWaveform();
+		drawNavigatorWaveform();
+		updateNavigator();
+		updatePlaybackCursor();
+	};
+
+	const sampleLiveAudio = () => {
+		if (!isRecording || !analyser || !analyserData) {
+			return;
+		}
+		elapsed = Math.max(0, (performance.now() - startTime) / 1000);
+		analyser.getFloatTimeDomainData(analyserData);
+		const index = Math.floor(elapsed * sampleRateForPeaks);
+		let peak = 0;
+		for (const sample of analyserData) {
+			peak = Math.max(peak, Math.abs(sample));
+		}
+		peaks[index] = Math.max(peaks[index] ?? 0, Math.min(1, peak));
+		timeDisplay.textContent = formatClock(elapsed);
+		updateLayout(false, true);
+		renderCount++;
+		if (renderCount % 6 === 0) {
+			drawNavigatorWaveform();
+		}
+		animationFrame = window.requestAnimationFrame(sampleLiveAudio);
+	};
+
+	const updateSelectedDevice = () => {
+		deviceList.querySelectorAll('button[data-capture-device-id]').forEach((button) => {
+			const selected = button.dataset.captureDeviceId === selectedDeviceId;
+			button.setAttribute('aria-pressed', String(selected));
+			button.classList.toggle('is-selected', selected);
+		});
+	};
+
+	const updateDeviceOptions = async () => {
+		if (!window.navigator.mediaDevices?.enumerateDevices) {
+			throw new Error('De microfoonlijst is niet beschikbaar in deze browser.');
+		}
+		try {
+			const devices = (await window.navigator.mediaDevices.enumerateDevices())
+				.filter((device) => device.kind === 'audioinput');
+			const deviceCount = devices.length;
+			const selectedDeviceExists = devices.some((device) => device.deviceId === selectedDeviceId);
+			if (!selectedDeviceExists) {
+				selectedDeviceId = devices.length === 1 ? devices[0].deviceId : '';
+			}
+			deviceList.replaceChildren();
+			if (devices.length > 1 || devices.length === 0) {
+				devices.unshift({ deviceId: '', label: 'Standaardmicrofoon' });
+			}
+			devices.forEach((device, index) => {
+				const item = document.createElement('li');
+				const button = document.createElement('button');
+				button.type = 'button';
+				button.className = 'capture-device-option';
+				button.dataset.captureDeviceId = device.deviceId;
+				button.textContent = device.label || `Microfoon ${index + 1}`;
+				item.append(button);
+				deviceList.append(item);
+			});
+			updateSelectedDevice();
+			settingsButton.hidden = deviceList.children.length <= 1 || sourceSelect.value !== 'microphone';
+			return deviceCount;
+		} catch (error) {
+			console.error('Microfoons konden niet worden opgehaald.', error);
+			settingsButton.hidden = true;
+			throw new Error('De lijst met microfoons kon niet worden geladen.', { cause: error });
+		}
+	};
+
+	const requestMicrophonePermission = async (selectionId) => {
+		if (!window.navigator.mediaDevices?.getUserMedia) {
+			throw new Error('Microfoonopname wordt niet door deze browser ondersteund.');
+		}
+		const permissionStream = await window.navigator.mediaDevices.getUserMedia({
+			audio: audioCaptureConstraints,
+		});
+		permissionStream.getTracks().forEach((permissionTrack) => permissionTrack.stop());
+		if (selectionId !== sourceSelectionId || sourceSelect.value !== 'microphone') {
+			return;
+		}
+		const deviceCount = await updateDeviceOptions();
+		if (selectionId === sourceSelectionId && deviceCount > 1) {
+			setStatus('Microfoontoegang is verleend. Kies eventueel een invoerapparaat via het tandwiel.');
+		} else if (selectionId === sourceSelectionId) {
+			setStatus('Microfoontoegang is verleend.');
+		}
+	};
+
+	const chooseSource = async (source) => {
+		if (isRecording || isStarting) {
+			return;
+		}
+		if (sourceSelect.value === source && isRequestingDevices) {
+			return;
+		}
+		sourceSelectionId++;
+		const selectionId = sourceSelectionId;
+		sourceSelect.value = source;
+		if (source !== 'microphone') {
+			isRequestingDevices = false;
+		}
+		updateSourceToggle();
+		updateControls();
+		if (source !== 'microphone') {
+			settingsButton.hidden = true;
+			setStatus('Scherm- of tabbladaudio is geselecteerd. Start de opname om te delen.');
+			return;
+		}
+		isRequestingDevices = true;
+		updateControls();
+		setStatus('Microfoontoestemming aanvragen zodat de invoerapparaten zichtbaar worden…');
+		try {
+			await requestMicrophonePermission(selectionId);
+		} catch (error) {
+			if (selectionId === sourceSelectionId) {
+				settingsButton.hidden = true;
+				setStatus(
+					error instanceof Error
+						? `Microfoontoestemming niet verkregen: ${error.message}`
+						: 'Microfoontoestemming niet verkregen.',
+					true,
+				);
+			}
+		} finally {
+			if (selectionId === sourceSelectionId) {
+				isRequestingDevices = false;
+				updateControls();
+			}
+		}
+	};
+
+	const releaseCapture = () => {
+		if (animationFrame !== null) {
+			window.cancelAnimationFrame(animationFrame);
+			animationFrame = null;
+		}
+		if (captureStream) {
+			captureStream.getTracks().forEach((trackToStop) => trackToStop.stop());
+			captureStream = null;
+		}
+		if (audioContext) {
+			void audioContext.close();
+			audioContext = null;
+		}
+		analyser = null;
+		analyserData = null;
+	};
+
+	const stopRecording = (message = 'De opname is gestopt.') => {
+		if (!recorder || recorder.state !== 'recording') {
+			return;
+		}
+		stopStatus = message;
+		recordingToggle.disabled = true;
+		setStatus('Opname wordt afgerond…');
+		recorder.stop();
+	};
+
+	const makeWav = (audioBuffer) => {
+		const channels = Math.min(2, audioBuffer.numberOfChannels);
+		const sampleCount = audioBuffer.length;
+		const bytesPerSample = 2;
+		const blockAlign = channels * bytesPerSample;
+		const output = new ArrayBuffer(44 + (sampleCount * blockAlign));
+		const view = new DataView(output);
+		const writeText = (offset, text) => {
+			for (let index = 0; index < text.length; index++) {
+				view.setUint8(offset + index, text.charCodeAt(index));
+			}
+		};
+		writeText(0, 'RIFF');
+		view.setUint32(4, output.byteLength - 8, true);
+		writeText(8, 'WAVE');
+		writeText(12, 'fmt ');
+		view.setUint32(16, 16, true);
+		view.setUint16(20, 1, true);
+		view.setUint16(22, channels, true);
+		view.setUint32(24, audioBuffer.sampleRate, true);
+		view.setUint32(28, audioBuffer.sampleRate * blockAlign, true);
+		view.setUint16(32, blockAlign, true);
+		view.setUint16(34, 16, true);
+		writeText(36, 'data');
+		view.setUint32(40, sampleCount * blockAlign, true);
+		const sourceChannels = Array.from({ length: channels }, (_, index) => audioBuffer.getChannelData(index));
+		let offset = 44;
+		for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+			for (const channel of sourceChannels) {
+				const sample = Math.max(-1, Math.min(1, channel[sampleIndex]));
+				view.setInt16(offset, Math.round(sample * (sample < 0 ? 32768 : 32767)), true);
+				offset += bytesPerSample;
+			}
+		}
+		return new Blob([output], { type: 'audio/wav' });
+	};
+
+	const getSample = (samples, position) => {
+		const left = Math.max(0, Math.min(samples.length - 1, Math.floor(position)));
+		const right = Math.min(samples.length - 1, left + 1);
+		const fraction = Math.max(0, position - left);
+		return samples[left] * (1 - fraction) + samples[right] * fraction;
+	};
+
+	const makeMp3 = async (blob) => {
+		if (!AudioContextClass) {
+			throw new Error('Deze browser kan audio niet naar MP3 omzetten.');
+		}
+		setStatus('Audio wordt ingelezen voor MP3-export…');
+		const decodingContext = new AudioContextClass();
+		try {
+			const audioBuffer = await decodingContext.decodeAudioData(await blob.arrayBuffer());
+			const library = await loadMp3Encoder();
+			const supportedRates = [48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000];
+			const sampleRate = supportedRates.find((rate) => rate <= audioBuffer.sampleRate) ?? 8000;
+			const channels = Math.min(2, audioBuffer.numberOfChannels);
+			const encoder = new library.Mp3Encoder(channels, sampleRate, 192);
+			const sourceChannels = Array.from({ length: audioBuffer.numberOfChannels }, (_, index) => audioBuffer.getChannelData(index));
+			const outputSamples = Math.max(1, Math.floor(audioBuffer.duration * sampleRate));
+			const encodedChunks = [];
+			const chunkSize = 1152;
+			for (let offset = 0; offset < outputSamples; offset += chunkSize) {
+				const size = Math.min(chunkSize, outputSamples - offset);
+				const left = new Int16Array(size);
+				const right = channels === 2 ? new Int16Array(size) : null;
+				for (let index = 0; index < size; index++) {
+					const sourcePosition = ((offset + index) * audioBuffer.sampleRate) / sampleRate;
+					let leftSample = getSample(sourceChannels[0], sourcePosition);
+					let rightSample = channels === 2 ? getSample(sourceChannels[1], sourcePosition) : leftSample;
+					if (channels === 2 && sourceChannels.length > 2) {
+						for (let extraChannel = 2; extraChannel < sourceChannels.length; extraChannel++) {
+							const extraSample = getSample(sourceChannels[extraChannel], sourcePosition) / sourceChannels.length;
+							if (extraChannel % 2 === 0) {
+								leftSample += extraSample;
+							} else {
+								rightSample += extraSample;
+							}
+						}
+					}
+					left[index] = Math.max(-32768, Math.min(32767, Math.round(leftSample * (leftSample < 0 ? 32768 : 32767))));
+					if (right && rightSample !== undefined) {
+						right[index] = Math.max(-32768, Math.min(32767, Math.round(rightSample * (rightSample < 0 ? 32768 : 32767))));
+					}
+				}
+				const chunk = right ? encoder.encodeBuffer(left, right) : encoder.encodeBuffer(left);
+				if (chunk.length) {
+					encodedChunks.push(chunk);
+				}
+				if (offset % (chunkSize * 40) === 0) {
+					setStatus(`MP3 maken… ${Math.min(100, Math.round(((offset + size) / outputSamples) * 100))}%`);
+					await new Promise((resolve) => window.setTimeout(resolve, 0));
+				}
+			}
+			const finalChunk = encoder.flush();
+			if (finalChunk.length) {
+				encodedChunks.push(finalChunk);
+			}
+			return new Blob(encodedChunks, { type: 'audio/mpeg' });
+		} finally {
+			await decodingContext.close();
+		}
+	};
+
+	const downloadBlob = (blob, format) => {
+		const extension = format.extension;
+		const baseName = filenameInput.value
+			.trim()
+			.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+			.replace(/[. ]+$/g, '')
+			.replace(new RegExp(`\\.${extension}$`, 'i'), '')
+			|| 'opname';
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = `${baseName}.${extension}`;
+		document.body.append(link);
+		link.click();
+		link.remove();
+		window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+	};
+
+	sourceButtons.forEach((button) => {
+		button.addEventListener('click', () => {
+			void chooseSource(button.dataset.captureSourceChoice);
+		});
+	});
+
+	settingsButton.addEventListener('click', () => {
+		previousBodyOverflow = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+		settingsModal.hidden = false;
+		const selectedDeviceButton = deviceList.querySelector('button[aria-pressed="true"]');
+		if (selectedDeviceButton instanceof HTMLButtonElement) {
+			selectedDeviceButton.focus({ preventScroll: true });
+		} else {
+			settingsCloseButton.focus({ preventScroll: true });
+		}
+	});
+	deviceList.addEventListener('click', (event) => {
+		if (!(event.target instanceof Element)) {
+			return;
+		}
+		const button = event.target.closest('[data-capture-device-id]');
+		if (!(button instanceof HTMLButtonElement) || button.disabled) {
+			return;
+		}
+		selectedDeviceId = button.dataset.captureDeviceId ?? '';
+		updateSelectedDevice();
+		closeSettingsModal();
+	});
+	settingsCloseButton.addEventListener('click', () => closeSettingsModal());
+	settingsModal.addEventListener('click', (event) => {
+		if (event.target === settingsModal) {
+			closeSettingsModal();
+		}
+	});
+	document.addEventListener('keydown', (event) => {
+		if (settingsModal.hidden || event.key !== 'Escape') {
+			return;
+		}
+		event.preventDefault();
+		closeSettingsModal();
+	});
+
+	filenameInput.addEventListener('input', () => {
+		filenameCustomized = true;
+	});
+
+	formatOptions.forEach((format, value) => {
+		formatSelect.add(new Option(format.label, value));
+	});
+	formatSelect.value = 'mp3';
+
+	const updateControls = () => {
+		recordingToggle.disabled = isStarting
+			|| isRequestingDevices
+			|| !mediaRecorderSupported
+			|| sourceSelect.value === '';
+		recordingToggle.classList.toggle('is-recording', isRecording);
+		const icon = recordingToggle.querySelector('.fas');
+		const label = recordingToggle.querySelector('span');
+		if (icon instanceof HTMLElement) {
+			icon.classList.toggle('fa-circle', !isRecording);
+			icon.classList.toggle('fa-stop', isRecording);
+		}
+		if (label instanceof HTMLElement) {
+			label.textContent = isRecording ? 'Opname stoppen' : 'Opname starten';
+		}
+		recordingToggle.setAttribute('aria-label', isRecording ? 'Opname stoppen' : 'Opname starten');
+		recordingToggle.setAttribute('aria-pressed', String(isRecording));
+		sourceSelect.disabled = isRecording || isStarting;
+		sourceButtons.forEach((button) => {
+			button.disabled = isRecording || isStarting;
+		});
+		deviceList.querySelectorAll('button').forEach((button) => {
+			button.disabled = isRecording || isStarting;
+		});
+		formatSelect.disabled = isRecording;
+	};
+
+	const updateSourceToggle = () => {
+		const isScreen = sourceSelect.value === 'screen';
+		sourceButtons.forEach((button) => {
+			const selected = button.dataset.captureSourceChoice === sourceSelect.value && sourceSelect.value !== '';
+			button.setAttribute('aria-pressed', String(selected));
+			button.classList.toggle('is-selected', selected);
+		});
+		settingsButton.hidden = isScreen || sourceSelect.value === '' || deviceList.children.length <= 1;
+	};
+
+	const closeSettingsModal = (returnFocus = true) => {
+		settingsModal.hidden = true;
+		document.body.style.overflow = previousBodyOverflow;
+		if (returnFocus) {
+			settingsButton.focus({ preventScroll: true });
+		}
+	};
+
+	document.body.append(settingsModal);
+
+	const updatePlaybackButton = () => {
+		const icon = playButton.querySelector('.fas');
+		const label = playButton.querySelector('span');
+		if (icon instanceof HTMLElement) {
+			icon.classList.toggle('fa-play', !isPlaying);
+			icon.classList.toggle('fa-pause', isPlaying);
+		}
+		if (label instanceof HTMLElement) {
+			label.textContent = isPlaying ? 'Pauzeren' : 'Afspelen';
+		}
+		playButton.setAttribute('aria-label', isPlaying ? 'Pauzeren' : 'Afspelen');
+		playButton.setAttribute('aria-pressed', String(isPlaying));
+	};
+
+	const updatePlaybackAnimation = () => {
+		if (!isPlaying) {
+			playbackFrame = null;
+			return;
+		}
+		playheadTime = preview.currentTime;
+		updatePlaybackCursor();
+		playbackFrame = window.requestAnimationFrame(updatePlaybackAnimation);
+	};
+
+	const seekPlayback = (time) => {
+		if (!recordedBlob || isRecording) {
+			return;
+		}
+		const duration = Math.max(elapsed, Number.isFinite(preview.duration) ? preview.duration : 0);
+		playheadTime = Math.max(0, Math.min(duration, time));
+		if (preview.readyState >= HTMLMediaElement.HAVE_METADATA) {
+			preview.currentTime = playheadTime;
+		}
+		updatePlaybackCursor();
+	};
+
+	const togglePlayback = async () => {
+		if (!recordedBlob || isRecording) {
+			return;
+		}
+		if (!preview.paused) {
+			preview.pause();
+			return;
+		}
+		if (preview.ended || preview.currentTime >= preview.duration) {
+			preview.currentTime = 0;
+		}
+		try {
+			await preview.play();
+		} catch (error) {
+			setStatus(error instanceof Error ? `Afspelen is niet gelukt: ${error.message}` : 'Afspelen is niet gelukt.', true);
+		}
+	};
+
+	const handleRecorderStop = () => {
+		isRecording = false;
+		isStarting = false;
+		editor.classList.remove('is-recording');
+		updateControls();
+		elapsed = Math.max(elapsed, (performance.now() - startTime) / 1000);
+		timeDisplay.textContent = formatClock(elapsed);
+		updateLayout(false);
+		releaseCapture();
+
+		const mimeType = recorder?.mimeType || recordedChunks.find((chunk) => chunk.type)?.type || '';
+		recordedBlob = new Blob(recordedChunks, { type: mimeType });
+		recordedChunks = [];
+		recorder = null;
+		if (recordedBlob.size === 0) {
+			exportButton.disabled = true;
+			playButton.disabled = true;
+			playhead.disabled = true;
+			navigatorPlayhead.disabled = true;
+			setStatus('De browser heeft geen audio ontvangen. Controleer de gekozen bron en probeer het opnieuw.', true);
+			return;
+		}
+		objectUrl = URL.createObjectURL(recordedBlob);
+		preview.src = objectUrl;
+		preview.load();
+		exportSection.hidden = false;
+		exportButton.disabled = false;
+		playButton.disabled = false;
+		playhead.disabled = false;
+		navigatorPlayhead.disabled = false;
+		playheadTime = 0;
+		updatePlaybackCursor();
+		updatePlaybackButton();
+		setStatus(stopStatus);
+	};
+
+	const beginRecording = async () => {
+		if (!mediaRecorderSupported || !AudioContextClass) {
+			setStatus('Deze browser ondersteunt geen audio-opname of live waveform.', true);
+			return;
+		}
+		if (!window.navigator.mediaDevices) {
+			setStatus('Browseropname is alleen beschikbaar via HTTPS of localhost.', true);
+			return;
+		}
+		if (filenameCustomized === false || filenameInput.value.trim() === '') {
+			filenameInput.value = formatFilenameTimestamp(new Date());
+			filenameCustomized = false;
+		}
+		if (objectUrl) {
+			URL.revokeObjectURL(objectUrl);
+			objectUrl = null;
+		}
+		recordedBlob = null;
+		preview.removeAttribute('src');
+		preview.load();
+		exportSection.hidden = true;
+		exportButton.disabled = true;
+		playButton.disabled = true;
+		playhead.disabled = true;
+		navigatorPlayhead.disabled = true;
+		preview.pause();
+		isPlaying = false;
+		playheadTime = 0;
+		updatePlaybackButton();
+		peaks = [];
+		elapsed = 0;
+		zoom = 1;
+		autoFollow = true;
+		renderCount = 0;
+		timeDisplay.textContent = '00:00';
+		updateLayout(false);
+		isStarting = true;
+		updateControls();
+		setStatus('Wachten op toestemming van de browser…');
+
+		try {
+			if (sourceSelect.value === 'screen') {
+				if (!window.navigator.mediaDevices.getDisplayMedia) {
+					throw new Error('Scherm- of tabbladaudio opnemen wordt niet door deze browser ondersteund.');
+				}
+				captureStream = await window.navigator.mediaDevices.getDisplayMedia({
+					audio: audioCaptureConstraints,
+					video: true,
+				});
+			} else {
+				const deviceId = selectedDeviceId;
+				const audioConstraints = deviceId
+					? { ...audioCaptureConstraints, deviceId: { exact: deviceId } }
+					: audioCaptureConstraints;
+				captureStream = await window.navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+			}
+
+			const audioTracks = captureStream.getAudioTracks();
+			if (audioTracks.length === 0) {
+				releaseCapture();
+				throw new Error('Er is geen audio gedeeld. Kies bij schermdelen een tabblad of scherm met audio ingeschakeld.');
+			}
+
+			const audioStream = new MediaStream(audioTracks);
+			audioContext = new AudioContextClass();
+			if (audioContext.state === 'suspended') {
+				await audioContext.resume();
+			}
+			analyser = audioContext.createAnalyser();
+			analyser.fftSize = 2048;
+			analyserData = new Float32Array(analyser.fftSize);
+			audioContext.createMediaStreamSource(audioStream).connect(analyser);
+
+			const selectedFormat = formatOptions.get(formatSelect.value);
+			const recorderMimeType = selectedFormat?.mimeType
+				? selectedFormat.mimeType
+				: supportedNativeFormats[0]?.mimeType;
+			const recorderOptions = { audioBitsPerSecond: 256000 };
+			if (recorderMimeType) {
+				recorderOptions.mimeType = recorderMimeType;
+			}
+			recorder = new MediaRecorder(audioStream, recorderOptions);
+			recordedChunks = [];
+			recorder.addEventListener('dataavailable', (event) => {
+				if (event.data.size > 0) {
+					recordedChunks.push(event.data);
+				}
+			});
+			recorder.addEventListener('error', (event) => {
+				const error = event.error;
+				setStatus(error instanceof Error ? `Opnemen is mislukt: ${error.message}` : 'Opnemen is mislukt.', true);
+				stopRecording('De opname is onverwacht gestopt.');
+			});
+			recorder.addEventListener('stop', handleRecorderStop, { once: true });
+			recorder.start(1000);
+			startTime = performance.now();
+			isStarting = false;
+			isRecording = true;
+			stopStatus = 'De opname is gestopt.';
+			editor.classList.add('is-recording');
+			updateControls();
+			const capturedChannels = audioTracks[0].getSettings?.().channelCount;
+			const channelStatus = capturedChannels === 1
+				? ' De bron levert mono; stereo is niet beschikbaar.'
+				: capturedChannels >= 2
+					? ' De bron levert stereo.'
+					: ' Stereo is aangevraagd; de browser bepaalt hoeveel kanalen de bron levert.';
+			const sourceStatus = sourceSelect.value === 'screen'
+				? 'Scherm- of tabbladaudio wordt opgenomen.'
+				: 'Microfoon wordt opgenomen.';
+			setStatus(`${sourceStatus}${channelStatus} Opnamebitrate: ${Math.round(recorder.audioBitsPerSecond / 1000)} kbit/s.`);
+			captureStream.getTracks().forEach((streamTrack) => {
+				streamTrack.addEventListener('ended', () => {
+					if (isRecording) {
+						stopRecording('De gedeelde bron is beëindigd.');
+					}
+				}, { once: true });
+			});
+			animationFrame = window.requestAnimationFrame(sampleLiveAudio);
+		} catch (error) {
+			releaseCapture();
+			recorder = null;
+			isStarting = false;
+			isRecording = false;
+			editor.classList.remove('is-recording');
+			updateControls();
+			const message = error instanceof Error ? error.message : 'De opname kon niet worden gestart.';
+			setStatus(`Opname niet gestart: ${message}`, true);
+		}
+	};
+
+	recordingToggle.addEventListener('click', () => {
+		if (isRecording) {
+			stopRecording();
+		} else {
+			void beginRecording();
+		}
+	});
+	playButton.addEventListener('click', () => void togglePlayback());
+	preview.addEventListener('loadedmetadata', () => {
+		if (Number.isFinite(preview.duration)) {
+			elapsed = Math.max(elapsed, preview.duration);
+			updateLayout();
+			if (playheadTime > 0) {
+				preview.currentTime = Math.min(playheadTime, preview.duration);
+			}
+		}
+	});
+	preview.addEventListener('timeupdate', () => {
+		playheadTime = preview.currentTime;
+		updatePlaybackCursor();
+	});
+	preview.addEventListener('play', () => {
+		isPlaying = true;
+		updatePlaybackButton();
+		if (playbackFrame === null) {
+			playbackFrame = window.requestAnimationFrame(updatePlaybackAnimation);
+		}
+	});
+	preview.addEventListener('pause', () => {
+		isPlaying = false;
+		updatePlaybackButton();
+		if (playbackFrame !== null) {
+			window.cancelAnimationFrame(playbackFrame);
+			playbackFrame = null;
+		}
+	});
+	preview.addEventListener('ended', () => {
+		isPlaying = false;
+		playheadTime = preview.duration;
+		updatePlaybackButton();
+		updatePlaybackCursor();
+	});
+
+	waveViewport.addEventListener('pointerdown', (event) => {
+		if (event.button !== 0 || !recordedBlob || isRecording) {
+			return;
+		}
+		event.preventDefault();
+		playheadDrag = true;
+		waveViewport.setPointerCapture(event.pointerId);
+		const bounds = waveViewport.getBoundingClientRect();
+		seekPlayback((waveViewport.scrollLeft + event.clientX - bounds.left) / pixelsPerSecond());
+	});
+	waveViewport.addEventListener('pointermove', (event) => {
+		if (!playheadDrag) {
+			return;
+		}
+		const bounds = waveViewport.getBoundingClientRect();
+		seekPlayback((waveViewport.scrollLeft + event.clientX - bounds.left) / pixelsPerSecond());
+	});
+	const stopPlayheadDrag = () => {
+		playheadDrag = false;
+	};
+	waveViewport.addEventListener('pointerup', stopPlayheadDrag);
+	waveViewport.addEventListener('pointercancel', stopPlayheadDrag);
+	waveViewport.addEventListener('lostpointercapture', stopPlayheadDrag);
+	playhead.addEventListener('keydown', (event) => {
+		if (!recordedBlob || isRecording || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) {
+			return;
+		}
+		event.preventDefault();
+		const step = event.shiftKey ? 0.1 : 1;
+		seekPlayback(playheadTime + (event.key === 'ArrowLeft' ? -step : step));
+	});
+
+	navigatorPlayhead.addEventListener('pointerdown', (event) => {
+		if (event.button !== 0 || !recordedBlob || isRecording) {
+			return;
+		}
+		event.preventDefault();
+		playheadDrag = true;
+		navigatorPlayhead.setPointerCapture(event.pointerId);
+		const bounds = captureNavigator.getBoundingClientRect();
+		seekPlayback(((event.clientX - bounds.left) / bounds.width) * timelineDuration());
+	});
+	navigatorPlayhead.addEventListener('pointermove', (event) => {
+		if (!playheadDrag) {
+			return;
+		}
+		const bounds = captureNavigator.getBoundingClientRect();
+		seekPlayback(((event.clientX - bounds.left) / bounds.width) * timelineDuration());
+	});
+	navigatorPlayhead.addEventListener('pointerup', stopPlayheadDrag);
+	navigatorPlayhead.addEventListener('pointercancel', stopPlayheadDrag);
+	navigatorPlayhead.addEventListener('lostpointercapture', stopPlayheadDrag);
+	navigatorPlayhead.addEventListener('keydown', (event) => {
+		if (!recordedBlob || isRecording || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) {
+			return;
+		}
+		event.preventDefault();
+		const step = event.shiftKey ? 0.1 : 1;
+		seekPlayback(playheadTime + (event.key === 'ArrowLeft' ? -step : step));
+	});
+
+	exportButton.addEventListener('click', async () => {
+		if (!recordedBlob) {
+			return;
+		}
+		const format = formatOptions.get(formatSelect.value);
+		if (!format) {
+			setStatus('Kies een ondersteund bestandsformaat.', true);
+			return;
+		}
+		exportButton.disabled = true;
+		try {
+			let output = recordedBlob;
+			if (formatSelect.value === 'mp3') {
+				output = await makeMp3(recordedBlob);
+			} else if (formatSelect.value === 'wav') {
+				if (!AudioContextClass) {
+					throw new Error('Deze browser kan audio niet naar WAV omzetten.');
+				}
+				setStatus('WAV-bestand wordt gemaakt…');
+				const decodingContext = new AudioContextClass();
+				try {
+					output = makeWav(await decodingContext.decodeAudioData(await recordedBlob.arrayBuffer()));
+				} finally {
+					await decodingContext.close();
+				}
+			}
+			downloadBlob(output, format);
+			setStatus(`${format.label} is aangemaakt en gedownload.`);
+		} catch (error) {
+			setStatus(error instanceof Error ? error.message : 'De opname kon niet worden geëxporteerd.', true);
+		} finally {
+			exportButton.disabled = !recordedBlob;
+		}
+	});
+
+	waveViewport.addEventListener('scroll', () => {
+		const maximumScroll = Math.max(0, trackWidth() - waveViewport.clientWidth);
+		autoFollow = maximumScroll - waveViewport.scrollLeft <= pixelsPerSecond() * 0.5;
+		ruler.style.transform = `translateX(-${waveViewport.scrollLeft}px)`;
+		drawWaveform();
+		updateNavigator();
+	});
+
+	const changeZoom = (change) => {
+		zoom = Math.max(minimumZoom, Math.min(maximumZoom, zoom + change));
+		updateLayout(true);
+	};
+
+	const resizeNavigator = (edge, left, width, delta) => {
+		const minimumWidth = Math.min(0.02, visibleDuration() / timelineDuration());
+		if (edge === 'start') {
+			const right = left + width;
+			left = Math.max(0, Math.min(right - minimumWidth, left + delta));
+			width = right - left;
+		} else {
+			const right = Math.max(left + minimumWidth, Math.min(1, left + width + delta));
+			width = right - left;
+		}
+		const nextVisibleDuration = Math.max(6, width * timelineDuration());
+		zoom = Math.max(minimumZoom, Math.min(maximumZoom, 60 / nextVisibleDuration));
+		updateLayout(false);
+		waveViewport.scrollLeft = left * trackWidth();
+	};
+
+	captureNavigator.addEventListener('pointerdown', (event) => {
+		if (!(event.target instanceof HTMLElement)) {
+			return;
+		}
+		const frame = event.target.closest('[data-capture-frame]');
+		if (!(frame instanceof HTMLElement)) {
+			return;
+		}
+		event.preventDefault();
+		const handle = event.target.closest('[data-capture-handle]');
+		const frameBounds = frame.getBoundingClientRect();
+		const navigatorBounds = captureNavigator.getBoundingClientRect();
+		navigatorDrag = {
+			mode: handle instanceof HTMLElement ? handle.dataset.captureHandle : 'move',
+			startX: event.clientX,
+			startLeft: frameBounds.left - navigatorBounds.left,
+			startWidth: frameBounds.width,
+		};
+		captureNavigator.setPointerCapture(event.pointerId);
+	});
+	captureNavigator.addEventListener('pointermove', (event) => {
+		if (!navigatorDrag || event.buttons === 0) {
+			return;
+		}
+		const bounds = captureNavigator.getBoundingClientRect();
+		if (bounds.width <= 0) {
+			return;
+		}
+		const delta = (event.clientX - navigatorDrag.startX) / bounds.width;
+		const left = navigatorDrag.startLeft / bounds.width;
+		const width = navigatorDrag.startWidth / bounds.width;
+		if (navigatorDrag.mode === 'move') {
+			const nextLeft = Math.max(0, Math.min(1 - width, left + delta));
+			waveViewport.scrollLeft = nextLeft * trackWidth();
+		} else if (navigatorDrag.mode === 'start' || navigatorDrag.mode === 'end') {
+			resizeNavigator(navigatorDrag.mode, left, width, delta);
+		}
+	});
+	const stopNavigatorDrag = () => {
+		navigatorDrag = null;
+	};
+	captureNavigator.addEventListener('pointerup', stopNavigatorDrag);
+	captureNavigator.addEventListener('pointercancel', stopNavigatorDrag);
+	captureNavigator.addEventListener('lostpointercapture', stopNavigatorDrag);
+	navigatorFrame.addEventListener('keydown', (event) => {
+		const handle = event.target instanceof HTMLElement
+			? event.target.closest('[data-capture-handle]')
+			: null;
+		if (handle instanceof HTMLElement && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+			event.preventDefault();
+			event.stopPropagation();
+			const bounds = captureNavigator.getBoundingClientRect();
+			const frameBounds = navigatorFrame.getBoundingClientRect();
+			const left = (frameBounds.left - bounds.left) / bounds.width;
+			const width = frameBounds.width / bounds.width;
+			resizeNavigator(handle.dataset.captureHandle, left, width, (event.key === 'ArrowLeft' ? -1 : 1) * 0.01);
+			return;
+		}
+		const pan = waveViewport.clientWidth * 0.05;
+		if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+			event.preventDefault();
+			waveViewport.scrollLeft += event.key === 'ArrowLeft' ? -pan : pan;
+		} else if (event.key === 'Home' || event.key === 'End') {
+			event.preventDefault();
+			waveViewport.scrollLeft = event.key === 'Home' ? 0 : trackWidth();
+		} else if (event.key === '+' || event.key === '=') {
+			event.preventDefault();
+			changeZoom(0.5);
+		} else if (event.key === '-') {
+			event.preventDefault();
+			changeZoom(-0.5);
+		}
+	});
+
+	const handleTimelineWheel = (event) => {
+		if (event.altKey) {
+			event.preventDefault();
+			waveViewport.scrollLeft += event.deltaY || event.deltaX;
+		} else if (event.ctrlKey || event.metaKey) {
+			event.preventDefault();
+			changeZoom(event.deltaY < 0 ? 0.25 : -0.25);
+		}
+	};
+	waveViewport.addEventListener('wheel', handleTimelineWheel, { passive: false });
+	editor.querySelector('[data-capture-ruler-viewport]')?.addEventListener('wheel', handleTimelineWheel, { passive: false });
+
+	updateSourceToggle();
+	updateControls();
+	if (!mediaRecorderSupported) {
+		setStatus('Deze browser ondersteunt geen audio-opname met MediaRecorder.', true);
+	}
+	updateLayout(false);
+	if ('ResizeObserver' in window) {
+		new ResizeObserver(() => updateLayout()).observe(waveViewport);
+	} else {
+		window.addEventListener('resize', () => updateLayout());
+	}
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 	initializeMp3LabelTool();
 	initializeDiscography();
 	initializeMp3CropTool();
+	initializeCaptureAudioTool();
 
 	const menuToggle = document.querySelector('.menu-toggle');
 	const navigation = document.querySelector('#primary-navigation');
